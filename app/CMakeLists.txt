@@ -5,14 +5,7 @@ set(CMAKE_VERBOSE_MAKEFILE on)
 
 include_directories(${PROJECT_SOURCE_DIR}/src/main/cpp/include/)
 
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++11 -fexceptions -frtti") #for OpenCV
 set(JNILIBS "${CMAKE_SOURCE_DIR}/src/main/jniLibs")
-
-# OpenCV Setup
-add_library( libopencv_java3 SHARED IMPORTED )
-set_target_properties(libopencv_java3 PROPERTIES
-        IMPORTED_LOCATION ${JNILIBS}/${ANDROID_ABI}/libopencv_java3.so
-        )
 
 # OpenAL setup
 add_library(openal SHARED IMPORTED )
@@ -41,19 +34,12 @@ add_library(JNI
 # OpenCV lib linking
 add_library(Yolo
         SHARED
-        src/main/cpp/src/ObjectDetector/ObjectDetector.cpp
         src/main/cpp/src/ObjectDetector/Helper.cpp
         )
 
-target_link_libraries(Yolo
-        android
-        log
-        libopencv_java3
-        )
 
 # Link OpenAL and OpenCV into single JNI lib
 target_link_libraries(JNI
         SoundGenerator
-        Yolo
         )
 

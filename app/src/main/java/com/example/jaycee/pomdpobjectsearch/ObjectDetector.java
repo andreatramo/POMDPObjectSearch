@@ -108,46 +108,21 @@ public class ObjectDetector implements Runnable
                 //update bounding box view
                 boundingBoxView.invalidate();
 
+                time = JNIBridge.getTime();
+
                 Log.v(TAG, String.format("Time: %f s - Number of found objects: %d ", time, resultLength/6));
 
                 int numFoundObjects = resultLength / 6;
 
+
                 //connect every object found with the correct code
-                //TODO: delete this part, because when we will have the our trained model, we don't
-                //TODO: need to make this operation
                 for (int i = 0; i < numFoundObjects; i++)
                 {
-                    int idx = (int) objectResults[(i * 6) + 4] + 1;
 
-                    Log.v(TAG, String.format("Index: %d", idx));
+                    //TODO: actually it save only one object at time, we can save all the found object
+                    objectCode = (int) objectResults[(i * 6) + 4] + 1;
+                    Log.v(TAG, String.format("Index: %d", objectCode));
 
-                    objectCode = (int)objectResults[(i * 6) + 4];
-
-                    switch (idx)
-                    {
-                        case 1: //person
-                            objectCode = 1;
-                            break;
-                        case 25: //backpack
-                            objectCode = 2;
-                            break;
-                        case 57: //chair
-                            objectCode = 3;
-                            break;
-                        case 63: //tvmonitor
-                            objectCode = 4;
-                            break;
-                        case 64: //laptop
-                            objectCode = 5;
-                            break;
-                        case 65: //mouse
-                            objectCode = 6;
-                            break;
-                        case 67: //keyboard
-                            objectCode = 7;
-                            break;
-                        default: objectCode = O_NOTHING;
-                    }
                 }
             }
             else
