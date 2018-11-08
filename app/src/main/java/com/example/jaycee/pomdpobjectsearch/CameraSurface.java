@@ -42,6 +42,7 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     public void surfaceCreated(SurfaceHolder surfaceHolder)
     {
         super.surfaceCreated(surfaceHolder);
+        ((ActivityCamera)context).createObjectDetector();
     }
 
     @Override

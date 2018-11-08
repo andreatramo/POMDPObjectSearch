@@ -26,9 +26,6 @@ import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
 import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 
-import org.opencv.core.CvType;
-import org.opencv.core.Mat;
-
 public class ActivityCamera extends AppCompatActivity
 {
     private static final String TAG = ActivityCamera.class.getSimpleName();
@@ -49,8 +46,6 @@ public class ActivityCamera extends AppCompatActivity
     private Session session;
 
     private CameraSurface surfaceView;
-
-    private BoundingBoxView boundingBoxView; //to write bounding box of the found object
 
     private DrawerLayout drawerLayout;
     private CentreView centreView;
@@ -74,9 +69,6 @@ public class ActivityCamera extends AppCompatActivity
         actionBar.setHomeAsUpIndicator(R.drawable.ic_menu);
 
         surfaceView = findViewById(R.id.surfaceview);
-
-        boundingBoxView = findViewById(R.id.bounding);
-
         centreView = findViewById(R.id.centre_view);
 
         drawerLayout = findViewById(R.id.layout_drawer_objects);
@@ -264,10 +256,15 @@ public class ActivityCamera extends AppCompatActivity
         }
     }
 
+    public void createObjectDetector()
+    {
+        //objectDetector = new ObjectDetector(this, surfaceView.getWidth(), surfaceView.getHeight(), surfaceView.getRenderer());
+    }
+
     public void startObjectDetector()
     {
-        objectDetector = new ObjectDetector(this, surfaceView.getWidth(), surfaceView.getHeight(), surfaceView.getRenderer(), boundingBoxView);
         objectDetector.run();
+        //TODO: add callback instead to run
     }
 
     public int currentObjectDetector()
@@ -282,7 +279,6 @@ public class ActivityCamera extends AppCompatActivity
 
     public Anchor getWaypointAnchor()
     {
-        /* TODO: Handle nullpointer crash here */
         return soundGenerator.getWaypointAnchor();
     }
 

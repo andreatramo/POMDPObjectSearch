@@ -5,8 +5,6 @@
 #include <android/log.h>
 
 #include <SoundGenerator/SoundGenerator.hpp>
-#include <ObjectDetector/ObjectDetector.hpp>
-#include <ObjectDetector/Helper.hpp>
 
 #ifdef __cplusplus
 extern "C" {

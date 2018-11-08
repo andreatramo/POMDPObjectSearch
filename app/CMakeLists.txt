@@ -30,14 +30,6 @@ add_library(JNI
             src/main/cpp/src/jniWrapper.cpp
             )
 
-
-# OpenCV lib linking
-add_library(Yolo
-        SHARED
-        src/main/cpp/src/ObjectDetector/Helper.cpp
-        )
-
-
 # Link OpenAL and OpenCV into single JNI lib
 target_link_libraries(JNI
         SoundGenerator

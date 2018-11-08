@@ -1,20 +1,41 @@
 package com.example.jaycee.pomdpobjectsearch;
 
-
-import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
-import android.content.res.AssetManager;
 import android.graphics.Bitmap;
+import android.graphics.Bitmap.Config;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Paint.Style;
+import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.media.Image;
+import android.media.ImageReader;
+import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Handler;
-import android.util.Log;
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import org.opencv.android.Utils;
-import org.opencv.core.Mat;
+import android.os.SystemClock;
+import android.os.Trace;
+import android.util.Size;
+import android.util.TypedValue;
+import android.view.Surface;
+import android.widget.Toast;
 
+import com.example.jaycee.pomdpobjectsearch.OverlayView.DrawCallback;
+import com.example.jaycee.pomdpobjectsearch.env.BorderedText;
+import com.example.jaycee.pomdpobjectsearch.env.ImageUtils;
+import com.example.jaycee.pomdpobjectsearch.env.Logger;
 import com.example.jaycee.pomdpobjectsearch.rendering.SurfaceRenderer;
+import com.example.jaycee.pomdpobjectsearch.tracking.MultiBoxTracker;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Vector;
+import com.example.jaycee.pomdpobjectsearch.rendering.SurfaceRenderer;
+
 
 
 /**
@@ -26,24 +47,82 @@ import com.example.jaycee.pomdpobjectsearch.rendering.SurfaceRenderer;
  * @version 1.0
  * @since   2018-10-29
  */
-public class ObjectDetector implements Runnable
-{
+public class ObjectDetector {
+
+    private static final Logger LOGGER = new Logger();
+
+    // Configuration values for the prepackaged SSD model.
+    private static final int TF_OD_API_INPUT_SIZE = 300;
+    private static final boolean TF_OD_API_IS_QUANTIZED = true;
+    private static final String TF_OD_API_MODEL_FILE = "detect.tflite";
+    private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/coco_labels_list.txt";
+
+    // Which detection model to use: by default uses Tensorflow Object Detection API frozen
+    // checkpoints.
+    private enum DetectorMode {
+        TF_OD_API;
+    }
+
+    private static final DetectorMode MODE = DetectorMode.TF_OD_API;
+
+    // Minimum detection confidence to track a detection.
+    private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.6f;
+
+    private static final boolean MAINTAIN_ASPECT = false;
+
+    private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
+
+    private static final boolean SAVE_PREVIEW_BITMAP = false;
+    private static final float TEXT_SIZE_DIP = 10;
+
+    private Integer sensorOrientation;
+
+    private Classifier detector;
+
+    private long lastProcessingTimeMs;
+    private Bitmap rgbFrameBitmap = null;
+    private Bitmap croppedBitmap = null;
+    private Bitmap cropCopyBitmap = null;
+
+    private boolean computingDetection = false;
+
+    private long timestamp = 0;
+
+    private Matrix frameToCropTransform;
+    private Matrix cropToFrameTransform;
+
+    private MultiBoxTracker tracker;
+
+    private byte[] luminanceCopy;
+
+    private BorderedText borderedText;
+
+    /* ----------------- from CameraActivity ----------------- */
+
+    private boolean debug = false;
+
+    private boolean isProcessingFrame = false;
+    private byte[][] yuvBytes = new byte[3][];
+    private int[] rgbBytes = null;
+    private int yRowStride;
+
+    protected int previewWidth = 0;
+    protected int previewHeight = 0;
+
+    private Runnable postInferenceCallback;
+    private Runnable imageConverter;
+
+    /* ----------------- mine variable ----------------- */
+
     private static final String TAG = ObjectDetector.class.getSimpleName();
     private static final int O_NOTHING = 0;
-
     //index of the found object. code=0 if no objects were found.
     private int objectCode = O_NOTHING;
 
     private Handler handler = new Handler();
-
     private boolean stop = false;
-
-    private Bitmap bitmap;
     private SurfaceRenderer renderer;
-
-    //variable that count the number of frame, useful to decide how many FPS we want to compute.
-    private int frameCounter = 0;
-    private BoundingBoxView boundingBoxView;
+    private Context context;
 
     /**
      * Constructor: The constructor initialize the global variables and call the native method for the DNN creation.
@@ -53,23 +132,123 @@ public class ObjectDetector implements Runnable
      * @param frameWidth This is the height of the analyzed frame.
      * @param renderer This is the address of the SurfaceRenderer object, used to take the actual
      *                 frame.
-     * @param bbv The bounding box view where will be drawn the bounding box of the object.
-     *
      */
-    public ObjectDetector(Context context, int frameWidth, int frameHeight, SurfaceRenderer renderer,
-                          BoundingBoxView bbv)
-    {
-        this.boundingBoxView = bbv;
+    public ObjectDetector(Context context, int frameWidth, int frameHeight, SurfaceRenderer renderer) {
+        //TODO: add to input parameter (final Size size, final int rotation)
+
         this.renderer = renderer;
+        this.context = context;
+
         //the bitmap where we will read the actual frame
-        this.bitmap = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888);
+//        this.bitmap = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888);
 
-        String cfgFilePath = getPath(".cfg", context);
-        String weightFilepat = getPath(".weights", context);
-        float confidence_threshold = 0;
 
-        //this method call the native code for the DNN creation
-        JNIBridge.create(cfgFilePath, weightFilepat, confidence_threshold);
+        final float textSizePx =
+                TypedValue.applyDimension(
+                        TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, context.getResources().getDisplayMetrics());
+        borderedText = new BorderedText(textSizePx);
+        borderedText.setTypeface(Typeface.MONOSPACE);
+
+        tracker = new MultiBoxTracker(context);
+
+        int cropSize = TF_OD_API_INPUT_SIZE;
+
+        try {
+            detector =
+                    TFLiteObjectDetectionAPIModel.create(
+                            context.getAssets(),
+                            TF_OD_API_MODEL_FILE,
+                            TF_OD_API_LABELS_FILE,
+                            TF_OD_API_INPUT_SIZE,
+                            TF_OD_API_IS_QUANTIZED);
+            cropSize = TF_OD_API_INPUT_SIZE;
+        } catch (final IOException e) {
+            LOGGER.e("Exception initializing classifier!", e);
+            Toast toast =
+                    Toast.makeText(
+                            context, "Classifier could not be initialized", Toast.LENGTH_SHORT);
+            toast.show();
+//            finish();
+        }
+
+
+        previewWidth = size.getWidth();
+        previewHeight = size.getHeight();
+
+        //ok si puo tenere
+        sensorOrientation = rotation - getScreenOrientation();
+        LOGGER.i("Camera orientation relative to screen canvas: %d", sensorOrientation);
+
+        LOGGER.i("Initializing at size %dx%d", previewWidth, previewHeight);
+        //ok utile anche questo: resize della bitmap, ma forse poi cancello tutto e lascio bytebuff[]
+        rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
+        croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
+
+        frameToCropTransform =
+                ImageUtils.getTransformationMatrix(
+                        previewWidth, previewHeight,
+                        cropSize, cropSize,
+                        sensorOrientation, MAINTAIN_ASPECT);
+
+        cropToFrameTransform = new Matrix();
+        frameToCropTransform.invert(cropToFrameTransform);
+
+        //questo credo disegni le box
+        trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
+        trackingOverlay.addCallback(
+                new DrawCallback() {
+                    @Override
+                    public void drawCallback(final Canvas canvas) {
+                        tracker.draw(canvas);
+                        if (isDebug()) {
+                            tracker.drawDebug(canvas);
+                        }
+                    }
+                });
+
+        addCallback(
+                new DrawCallback() {
+                    @Override
+                    public void drawCallback(final Canvas canvas) {
+                        if (!isDebug()) {
+                            return;
+                        }
+                        final Bitmap copy = cropCopyBitmap;
+                        if (copy == null) {
+                            return;
+                        }
+
+                        final int backgroundColor = Color.argb(100, 0, 0, 0);
+                        canvas.drawColor(backgroundColor);
+
+                        final Matrix matrix = new Matrix();
+                        final float scaleFactor = 2;
+                        matrix.postScale(scaleFactor, scaleFactor);
+                        matrix.postTranslate(
+                                canvas.getWidth() - copy.getWidth() * scaleFactor,
+                                canvas.getHeight() - copy.getHeight() * scaleFactor);
+                        canvas.drawBitmap(copy, matrix, new Paint());
+
+                        final Vector<String> lines = new Vector<String>();
+                        if (detector != null) {
+                            final String statString = detector.getStatString();
+                            final String[] statLines = statString.split("\n");
+                            for (final String line : statLines) {
+                                lines.add(line);
+                            }
+                        }
+                        lines.add("");
+
+                        lines.add("Frame: " + previewWidth + "x" + previewHeight);
+                        lines.add("Crop: " + copy.getWidth() + "x" + copy.getHeight());
+                        lines.add("View: " + canvas.getWidth() + "x" + canvas.getHeight());
+                        lines.add("Rotation: " + sensorOrientation);
+                        lines.add("Inference time: " + lastProcessingTimeMs + "ms");
+
+                        borderedText.drawLines(canvas, 10, canvas.getHeight() - 10, lines);
+                    }
+                });
+
     }
 
 
@@ -80,64 +259,92 @@ public class ObjectDetector implements Runnable
     @Override
     public void run()
     {
+
         objectCode = O_NOTHING;
-        //read the actual frame
-        bitmap.copyPixelsFromBuffer(renderer.getCurrentFrameBuffer());
 
-        Mat inputFrame = new Mat();
-        Utils.bitmapToMat(bitmap, inputFrame);
+        ++timestamp;
+        final long currTimestamp = timestamp;
+        byte[] originalLuminance = getLuminance();
+        tracker.onFrame(
+                previewWidth,
+                previewHeight,
+                getLuminanceStride(),
+                sensorOrientation,
+                originalLuminance,
+                timestamp);
+        trackingOverlay.postInvalidate();
 
-        double time = -1;
-
-        int cameraFPS = 30;
-        //we decide to compute 2 FPS
-        int yoloFPS = 2;
-
-        if(frameCounter%(cameraFPS/yoloFPS) == 0)
-        {
-            //call for the native classification method
-            float[] objectResults = JNIBridge.classify(inputFrame.getNativeObjAddr());
-
-            int resultLength = objectResults.length;
-            //we look if there are found object (result_length > 5) and if the array is correctly
-            // set (result_length % 6 == 0). Remember that for every object we have 6 parameters.
-            if (resultLength > 5 && resultLength % 6 == 0)
-            {
-                //give the results to the bounding box view
-                boundingBoxView.setResults(objectResults);
-                //update bounding box view
-                boundingBoxView.invalidate();
-
-                time = JNIBridge.getTime();
-
-                Log.v(TAG, String.format("Time: %f s - Number of found objects: %d ", time, resultLength/6));
-
-                int numFoundObjects = resultLength / 6;
-
-
-                //connect every object found with the correct code
-                for (int i = 0; i < numFoundObjects; i++)
-                {
-
-                    //TODO: actually it save only one object at time, we can save all the found object
-                    objectCode = (int) objectResults[(i * 6) + 4] + 1;
-                    Log.v(TAG, String.format("Index: %d", objectCode));
-
-                }
-            }
-            else
-            {
-                boundingBoxView.setResults(null);
-                boundingBoxView.invalidate();
-            }
-
+        // No mutex needed as this method is not reentrant.
+        if (computingDetection) {
+            readyForNextImage();
+            return;
         }
-        frameCounter++;
+        computingDetection = true;
+        LOGGER.i("Preparing image " + currTimestamp + " for detection in bg thread.");
+
+        rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
+
+        if (luminanceCopy == null) {
+            luminanceCopy = new byte[originalLuminance.length];
+        }
+        System.arraycopy(originalLuminance, 0, luminanceCopy, 0, originalLuminance.length);
+        readyForNextImage();
+
+        final Canvas canvas = new Canvas(croppedBitmap);
+        canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
+        // For examining the actual TF input.
+        if (SAVE_PREVIEW_BITMAP) {
+            ImageUtils.saveBitmap(croppedBitmap);
+        }
+
+        runInBackground(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        LOGGER.i("Running detection on image " + currTimestamp);
+                        final long startTime = SystemClock.uptimeMillis();
+                        final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+                        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                        final Canvas canvas = new Canvas(cropCopyBitmap);
+                        final Paint paint = new Paint();
+                        paint.setColor(Color.RED);
+                        paint.setStyle(Style.STROKE);
+                        paint.setStrokeWidth(2.0f);
+
+                        float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                        switch (MODE) {
+                            case TF_OD_API:
+                                minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                                break;
+                        }
+
+                        final List<Classifier.Recognition> mappedRecognitions =
+                                new LinkedList<Classifier.Recognition>();
+
+                        for (final Classifier.Recognition result : results) {
+                            final RectF location = result.getLocation();
+                            if (location != null && result.getConfidence() >= minimumConfidence) {
+                                canvas.drawRect(location, paint);
+
+                                cropToFrameTransform.mapRect(location);
+                                result.setLocation(location);
+                                mappedRecognitions.add(result);
+                            }
+                        }
+
+                        tracker.trackResults(mappedRecognitions, luminanceCopy, currTimestamp);
+                        trackingOverlay.postInvalidate();
+
+                        requestRender();
+                        computingDetection = false;
+                    }
+                });
 
         if(!stop)
             handler.postDelayed(this, 40);
     }
-
 
     /**
      * The stop method stop the thread.
@@ -154,50 +361,21 @@ public class ObjectDetector implements Runnable
      *
      * @return int The actual code.
      */
-    public int getCode()
-    {
-        return this.objectCode;
+    public int getCode() {
+        return this.code;
     }
 
-    //TODO: I would like to delete this method and use direct path of the assets directory
-    @SuppressLint("LongLogTag")
-    /**
-     * This method take file from asset directory, read them and save them in a different directory:
-     * File. So the file could be accessible from the native code.
-     */
-    public static String getPath(String fileType, Context context) {
-        AssetManager assetManager = context.getAssets();
-        String[] pathNames = {};
-        String fileName = "";
-        try {
-            pathNames = assetManager.list("yolo");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        for ( String filePath : pathNames ) {
-            if ( filePath.endsWith(fileType)) {
-                fileName = filePath;
-                break;
-            }
-        }
-        BufferedInputStream inputStream;
-        try {
-            // Read data from assets.
-            inputStream = new BufferedInputStream(assetManager.open("yolo/" + fileName));
-            byte[] data = new byte[inputStream.available()];
-            inputStream.read(data);
-            inputStream.close();
-
-            // Create copy file in storage.
-            File outFile = new File(context.getFilesDir(), fileName);
-            FileOutputStream os = new FileOutputStream(outFile);
-            os.write(data);
-            os.close();
-            // Return a path to file which may be read in common way.
-            return outFile.getAbsolutePath();
-        } catch (IOException ex) {
-            //Log.i(TAG, "Failed to upload a file");
-        }
-        return "";
+    protected int getLayoutId() {
+        return R.layout.camera_connection_fragment_tracking;
     }
+
+    protected Size getDesiredPreviewFrameSize() {
+        return DESIRED_PREVIEW_SIZE;
+    }
+
+    public void onSetDebug(final boolean debug) {
+        detector.enableStatLogging(debug);
+    }
+
+
 }
