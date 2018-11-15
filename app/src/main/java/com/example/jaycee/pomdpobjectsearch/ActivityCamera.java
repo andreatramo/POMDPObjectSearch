@@ -37,9 +37,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
 
-import static com.google.ar.core.ArCoreApk.InstallStatus.INSTALLED;
-import static com.google.ar.core.ArCoreApk.InstallStatus.INSTALL_REQUESTED;
-
 public class ActivityCamera extends ActivityCameraBase implements ImageReader.OnImageAvailableListener, FrameHandler
 {
     private enum DetectorMode {
@@ -165,11 +162,11 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
     @Override
     public void onPause()
     {
+        surfaceView.onPause();
         if(session != null)
         {
             session.pause();
         }
-        surfaceView.onPause();
         super.onPause();
     }
 
