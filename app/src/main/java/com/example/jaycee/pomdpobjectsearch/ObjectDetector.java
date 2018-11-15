@@ -1,228 +1,254 @@
 package com.example.jaycee.pomdpobjectsearch;
 
-
-import android.annotation.SuppressLint;
-import android.content.Context;
+import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
-import android.os.Handler;
-import android.util.Log;
-import java.io.BufferedInputStream;
+import android.graphics.RectF;
+import android.os.Trace;
+
+import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
+
+import org.tensorflow.lite.Interpreter;
+
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import org.opencv.android.Utils;
-import org.opencv.core.Mat;
-
-import com.example.jaycee.pomdpobjectsearch.rendering.SurfaceRenderer;
-import com.example.jaycee.pomdpobjectsearch.views.BoundingBoxView;
-
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.Buffer;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
 
 /**
- * The ObjectDetector class provide the functions to create and use a Deep Neural Network based on
- * YOLOv3 algorithm (an object detector). It use native c++ code to reach the purpose (see
- * ObjectDetector.cpp).
- *
- * @author  Andrea Gaetano Tramontano
- * @version 1.0
- * @since   2018-10-29
+ * Wrapper for frozen detection models trained using the Tensorflow Object Detection API:
+ * github.com/tensorflow/models/tree/master/research/object_detection
  */
-public class ObjectDetector implements Runnable
+public class ObjectDetector implements Classifier
 {
     private static final String TAG = ObjectDetector.class.getSimpleName();
-    private static final int O_NOTHING = 0;
+    private static final Logger LOGGER = new Logger(TAG);
 
-    //index of the found object. code=0 if no objects were found.
-    private int objectCode = O_NOTHING;
+    // Only return this many results.
+    private static final int NUM_DETECTIONS = 10;
+    private boolean isModelQuantized;
+    // Float model
+    private static final float IMAGE_MEAN = 128.0f;
+    private static final float IMAGE_STD = 128.0f;
+    // Number of threads in the java app
+    private static final int NUM_THREADS = 4;
+    // Config values.
+    private int inputSize;
+    // Pre-allocated buffers.
+    private Vector<String> labels = new Vector<String>();
+    private int[] intValues;
+    // outputLocations: array of shape [Batchsize, NUM_DETECTIONS,4]
+    // contains the location of detected boxes
+    private float[][][] outputLocations;
+    // outputClasses: array of shape [Batchsize, NUM_DETECTIONS]
+    // contains the classes of detected boxes
+    private float[][] outputClasses;
+    // outputScores: array of shape [Batchsize, NUM_DETECTIONS]
+    // contains the scores of detected boxes
+    private float[][] outputScores;
+    // numDetections: array of shape [Batchsize]
+    // contains the number of detected boxes
+    private float[] numDetections;
 
-    private Handler handler = new Handler();
+    private ByteBuffer imgData;
 
-    private boolean stop = false;
+    private Interpreter tfLite;
 
-    private Bitmap bitmap;
-    private SurfaceRenderer renderer;
-
-    //variable that count the number of frame, useful to decide how many FPS we want to compute.
-    private int frameCounter = 0;
-    private BoundingBoxView boundingBoxView;
-
-    /**
-     * Constructor: The constructor initialize the global variables and call the native method for the DNN creation.
-     *
-     * @param context The actual context activity.
-     * @param frameWidth This is the width of the analyzed frame.
-     * @param frameWidth This is the height of the analyzed frame.
-     * @param renderer This is the address of the SurfaceRenderer object, used to take the actual
-     *                 frame.
-     * @param bbv The bounding box view where will be drawn the bounding box of the object.
-     *
-     */
-    public ObjectDetector(Context context, int frameWidth, int frameHeight, SurfaceRenderer renderer,
-                          BoundingBoxView bbv)
-    {
-        this.boundingBoxView = bbv;
-        this.renderer = renderer;
-        //the bitmap where we will read the actual frame
-        this.bitmap = Bitmap.createBitmap(frameWidth, frameHeight, Bitmap.Config.ARGB_8888);
-
-        String cfgFilePath = getPath(".cfg", context);
-        String weightFilepat = getPath(".weights", context);
-        float confidence_threshold = 0;
-
-        //this method call the native code for the DNN creation
-        JNIBridge.createObjectDetector(cfgFilePath, weightFilepat, confidence_threshold);
+    /** Memory-map the model file in Assets. */
+    private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
+            throws IOException {
+        AssetFileDescriptor fileDescriptor = assets.openFd(modelFilename);
+        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+        FileChannel fileChannel = inputStream.getChannel();
+        long startOffset = fileDescriptor.getStartOffset();
+        long declaredLength = fileDescriptor.getDeclaredLength();
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
     }
 
-
     /**
-     * The run method start the thread: take a new frame, call the native code for analyze the frame,
-     * look for found object and save the results in a variable.
+     * Initializes a native TensorFlow session for classifying images.
+     *
+     * @param assetManager The asset manager to be used to load assets.
+     * @param modelFilename The filepath of the model GraphDef protocol buffer.
+     * @param labelFilename The filepath of label file for classes.
+     * @param inputSize The size of image input
+     * @param isQuantized Boolean representing model is quantized or not
      */
-    @Override
-    public void run()
-    {
-        int cameraFPS = 30;
-        //we decide to compute 2 FPS
-        int yoloFPS = 2;
+    public static Classifier create(
+            final AssetManager assetManager,
+            final String modelFilename,
+            final String labelFilename,
+            final int inputSize,
+            final boolean isQuantized)
+            throws IOException {
 
-        if(frameCounter%(cameraFPS/yoloFPS) != 0)
+        final ObjectDetector d = new ObjectDetector();
+
+        String actualFilename = labelFilename.split("file:///android_asset/")[1];
+        InputStream labelsInput = assetManager.open(actualFilename);
+/*
+        File labelFile = new File(actualFilename);
+        if(!labelFile.exists())
         {
-            boundingBoxView.setResults(null);
-            boundingBoxView.invalidate();
+            byte[] data = new byte[8388608];
+            labelsInput.read(data);
+            labelsInput.close();
 
-            handler.postDelayed(this, 40);
+            FileOutputStream fos = new FileOutputStream(labelFile);
+            fos.write(data);
+            fos.close();
 
-            return;
+        }*/
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(labelsInput));
+        String line;
+        while ((line = br.readLine()) != null)
+        {
+            d.labels.add(line);
         }
-        objectCode = O_NOTHING;
-        //read the actual frame
-        bitmap.copyPixelsFromBuffer(renderer.getCurrentFrameBuffer());
+        br.close();
 
-        Mat inputFrame = new Mat();
-        Utils.bitmapToMat(bitmap, inputFrame);
+        d.inputSize = inputSize;
 
-        double time = -1;
-
-        //call for the native classification method
-        float[] objectResults = JNIBridge.classify(inputFrame.getNativeObjAddr());
-
-        int resultLength = objectResults.length;
-        //we look if there are found object (result_length > 5) and if the array is correctly
-        // set (result_length % 6 == 0). Remember that for every object we have 6 parameters.
-        if (resultLength > 5 && resultLength % 6 == 0)
+        try
         {
-            //give the results to the bounding box view
-            // boundingBoxView.setResults(objectResults);
-            //update bounding box view
-            boundingBoxView.invalidate();
+            d.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
+            // d.tfLite = new Interpreter(labelFile);
+        }
+        catch (Exception e)
+        {
+            throw new RuntimeException(e);
+        }
 
-            Log.v(TAG, String.format("Time: %f s - Number of found objects: %d ", time, resultLength/6));
-
-            int numFoundObjects = resultLength / 6;
-
-            //connect every object found with the correct code
-            //TODO: delete this part, because when we will have the our trained model, we don't
-            //TODO: need to make this operation
-            for (int i = 0; i < numFoundObjects; i++)
+        d.isModelQuantized = isQuantized;
+        // Pre-allocate buffers.
+        int numBytesPerChannel;
+        if (isQuantized)
+        {
+            numBytesPerChannel = 1; // Quantized
+        }
+        else
             {
-                int idx = (int) objectResults[(i * 6) + 4] + 1;
+            numBytesPerChannel = 4; // Floating point
+        }
+        d.imgData = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+        d.imgData.order(ByteOrder.nativeOrder());
+        d.intValues = new int[d.inputSize * d.inputSize];
 
-                Log.v(TAG, String.format("Index: %d", idx));
+        //check if changing the threads number the performance change
+        d.tfLite.setNumThreads(NUM_THREADS);
+        d.outputLocations = new float[1][NUM_DETECTIONS][4];
+        d.outputClasses = new float[1][NUM_DETECTIONS];
+        d.outputScores = new float[1][NUM_DETECTIONS];
+        d.numDetections = new float[1];
 
-                objectCode = (int)objectResults[(i * 6) + 4];
+        return d;
+    }
 
-                switch (idx)
+    private ObjectDetector() {}
+
+    @Override
+    public List<Recognition> recognizeImage(Bitmap bitmap) { //TODO: change bitmap with byteArray[] and change the code of tensorflow lite to take all the image size
+        // Log this method so that it can be analyzed with systrace.
+        Trace.beginSection("recognizeImage");
+
+        Trace.beginSection("preprocessBitmap");
+        // Preprocess the image data from 0-255 int to normalized float based
+        // on the provided parameters.
+        bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
+
+        imgData.rewind();
+        for (int i = 0; i < inputSize; ++i)
+        {
+            for (int j = 0; j < inputSize; ++j)
+            {
+                int pixelValue = intValues[i * inputSize + j];
+                if (isModelQuantized)
                 {
-                    case 1: //person
-                        objectCode = 1;
-                        break;
-                    case 25: //backpack
-                        objectCode = 2;
-                        break;
-                    case 57: //chair
-                        objectCode = 3;
-                        break;
-                    case 63: //tvmonitor
-                        objectCode = 4;
-                        break;
-                    case 64: //laptop
-                        objectCode = 5;
-                        break;
-                    case 65: //mouse
-                        objectCode = 6;
-                        break;
-                    case 67: //keyboard
-                        objectCode = 7;
-                        break;
-                    default: objectCode = O_NOTHING;
+                    // Quantized model
+                    imgData.put((byte) ((pixelValue >> 16) & 0xFF));
+                    imgData.put((byte) ((pixelValue >> 8) & 0xFF));
+                    imgData.put((byte) (pixelValue & 0xFF));
+                }
+                else
+                { // Float model
+                    imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                    imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+                    imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
                 }
             }
         }
-    frameCounter++;
 
-    if(!stop)
-        handler.postDelayed(this, 40);
+        Trace.endSection(); // preprocessBitmap
+
+        // Copy the input data into TensorFlow.
+        Trace.beginSection("feed");
+        outputLocations = new float[1][NUM_DETECTIONS][4];
+        outputClasses = new float[1][NUM_DETECTIONS];
+        outputScores = new float[1][NUM_DETECTIONS];
+        numDetections = new float[1];
+
+        Object[] inputArray = {imgData};
+        Map<Integer, Object> outputMap = new HashMap<>();
+        outputMap.put(0, outputLocations);
+        outputMap.put(1, outputClasses);
+        outputMap.put(2, outputScores);
+        outputMap.put(3, numDetections);
+        Trace.endSection();
+
+        // Run the inference call.
+        Trace.beginSection("run");
+        tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
+        Trace.endSection();
+
+        // Show the best detections.
+        // after scaling them back to the input size.
+        final ArrayList<Recognition> recognitions = new ArrayList<>(NUM_DETECTIONS);
+        for (int i = 0; i < NUM_DETECTIONS; ++i) {
+            final RectF detection =
+                    new RectF(
+                            outputLocations[0][i][1] * inputSize,
+                            outputLocations[0][i][0] * inputSize,
+                            outputLocations[0][i][3] * inputSize,
+                            outputLocations[0][i][2] * inputSize);
+            // SSD Mobilenet V1 Model assumes class 0 is background class
+            // in label file and class labels start from 1 to number_of_classes+1,
+            // while outputClasses correspond to class index from 0 to number_of_classes
+            int labelOffset = 1;
+            recognitions.add(
+                    new Recognition(
+                            "" + i,
+                            labels.get((int) outputClasses[0][i] + labelOffset),
+                            outputScores[0][i],
+                            detection));
+        }
+        Trace.endSection(); // "recognizeImage"
+        return recognitions;
     }
 
-    /**
-     * The stop method stop the thread.
-     */
-    public void stop()
-    {
-        this.stop = true;
-        handler = null;
+    @Override
+    public void enableStatLogging(final boolean logStats) {
     }
 
-
-    /**
-     * The getCode method return the actual code of the found object.
-     *
-     * @return int The actual code.
-     */
-    public int getCode()
-    {
-        return this.objectCode;
-    }
-
-    //TODO: I would like to delete this method and use direct path of the assets directory
-    @SuppressLint("LongLogTag")
-    /**
-     * This method take file from asset directory, read them and save them in a different directory:
-     * File. So the file could be accessible from the native code.
-     */
-    public static String getPath(String fileType, Context context) {
-        AssetManager assetManager = context.getAssets();
-        String[] pathNames = {};
-        String fileName = "";
-        try {
-            pathNames = assetManager.list("yolo");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        for ( String filePath : pathNames ) {
-            if ( filePath.endsWith(fileType)) {
-                fileName = filePath;
-                break;
-            }
-        }
-        BufferedInputStream inputStream;
-        try {
-            // Read data from assets.
-            inputStream = new BufferedInputStream(assetManager.open("yolo/" + fileName));
-            byte[] data = new byte[inputStream.available()];
-            inputStream.read(data);
-            inputStream.close();
-
-            // Create copy file in storage.
-            File outFile = new File(context.getFilesDir(), fileName);
-            FileOutputStream os = new FileOutputStream(outFile);
-            os.write(data);
-            os.close();
-            // Return a path to file which may be read in common way.
-            return outFile.getAbsolutePath();
-        } catch (IOException ex) {
-            //Log.i(TAG, "Failed to upload a file");
-        }
+    @Override
+    public String getStatString() {
         return "";
+    }
+
+    @Override
+    public void close() {
     }
 }

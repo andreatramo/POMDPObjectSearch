@@ -1,13 +1,9 @@
 package com.example.jaycee.pomdpobjectsearch;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
-import android.graphics.Matrix;
-import android.graphics.RectF;
-import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -23,14 +19,11 @@ import android.support.annotation.NonNull;
 import android.support.v4.content.ContextCompat;
 import android.text.TextUtils;
 import android.util.AttributeSet;
-import android.util.Log;
 import android.util.Size;
-import android.view.MotionEvent;
-import android.view.Surface;
 import android.view.SurfaceHolder;
 
+import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
 import com.example.jaycee.pomdpobjectsearch.rendering.CameraRenderer;
-import com.example.jaycee.pomdpobjectsearch.rendering.SurfaceRenderer;
 import com.google.ar.core.Session;
 
 import java.util.ArrayList;
@@ -44,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callback
 {
     private static final String TAG = CameraSurface.class.getSimpleName();
+    private static final Logger LOGGER = new Logger(TAG);
 
     private static final int MINIMUM_PREVIEW_SIZE = 320;
 
@@ -71,15 +65,12 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     {
         super(context, attrs);
 
-        Log.i(TAG, "Surface init");
-
         this.context = context;
 
         renderer = new CameraRenderer(this);
         inputSize = ((ActivityCamera)context).getDesiredPreviewSize();
 
         getHolder().addCallback(this);
-        // getHolder().setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
 
         setPreserveEGLContextOnPause(true);
         setEGLContextClientVersion(2);
@@ -105,7 +96,6 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
             imageReader.setOnImageAvailableListener((ActivityCamera)context, backgroundHandler);
             openCamera();
         }
-        // ((ActivityCamera)context).startObjectDetector();
     }
 
     @Override
@@ -113,36 +103,7 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     {
         super.surfaceDestroyed(surfaceHolder);
         renderer.destroyRenderer();
-        // ((ActivityCamera)context).stopObjectDetector();
     }
-
-/*    @Override
-    public boolean onTouchEvent(MotionEvent event)
-    {
-        Log.i(TAG, "Pressed");
-        final int action = event.getAction();
-
-        switch(action)
-        {
-            case (MotionEvent.ACTION_DOWN):
-            {
-                performClick();
-            }
-        }
-        return super.onTouchEvent(event);
-    }*/
-
-/*
-    @Override
-    public boolean performClick()
-    {
-        super.performClick();
-
-        renderer.toggleDrawObjects();
-
-        return true;
-    }
-*/
 
     public void openCamera()
     {
@@ -168,9 +129,9 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
                     continue;
                 }
                 sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-                previewSize = chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
+                previewSize = inputSize; /* chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),
                                 inputSize.getWidth(),
-                                inputSize.getHeight());
+                                inputSize.getHeight());*/
                 this.cameraId = cameraId;
             }
             manager.openCamera(cameraId, stateCallback, backgroundHandler);
@@ -178,13 +139,12 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
         }
         catch (CameraAccessException e)
         {
-            Log.e(TAG, "Cannot access the camera." + e.toString());
+            LOGGER.e("Cannot access the camera." + e.toString());
         }
         catch (InterruptedException e)
         {
             throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
         }
-        Log.i(TAG, "openCamera");
     }
 
     public void closeCamera()
@@ -205,7 +165,6 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
             }
             if (imageReader != null)
             {
-                Log.i(TAG, "nulling imagereader");
                 imageReader.close();
                 imageReader = null;
             }
@@ -218,8 +177,6 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
         {
             cameraOpenCloseLock.release();
         }
-
-        Log.i(TAG, "closeCamera");
     }
 
     private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback()
@@ -260,7 +217,7 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
         }
         catch (CameraAccessException e)
         {
-            Log.e(TAG, "createCaptureSession " + e.toString());
+            LOGGER.e("createCaptureSession " + e.toString());
         }
     }
 
@@ -290,14 +247,12 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     public void onResume()
     {
         super.onResume();
-        Log.i(TAG, "Surface onResume");
         startBackgroundThread();
     }
 
     @Override
     public void onPause()
     {
-        Log.i(TAG, "Surface onPause");
         closeCamera();
         stopBackgroundThread();
         super.onPause();
@@ -318,19 +273,19 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
                 }
                 else
                 {
-                    Log.e(TAG, "captureRequest is null");
+                    LOGGER.e("captureRequest is null");
                 }
             }
             catch (CameraAccessException e)
             {
-                Log.e(TAG, "onConfigured " + e.toString());
+                LOGGER.e("onConfigured " + e.toString());
             }
         }
 
         @Override
         public void onConfigureFailed(@NonNull CameraCaptureSession session)
         {
-            Log.e(TAG, "onConfigureFailed");
+            LOGGER.e("onConfigureFailed");
         }
     };
 
@@ -346,8 +301,7 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
         }
         catch (CameraAccessException e)
         {
-            Log.e(TAG, e.getMessage());
-
+            LOGGER.e(e.getMessage());
             return null;
         }
     }
@@ -379,13 +333,13 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
             }
         }
 
-        Log.i(TAG, "Desired size: " + desiredSize + ", min size: " + minSize + "x" + minSize);
-        Log.i(TAG, "Valid preview sizes: [" + TextUtils.join(", ", bigEnough) + "]");
-        Log.i(TAG, "Rejected preview sizes: [" + TextUtils.join(", ", tooSmall) + "]");
+        LOGGER.i("Desired size: " + desiredSize + ", min size: " + minSize + "x" + minSize);
+        LOGGER.i("Valid preview sizes: [" + TextUtils.join(", ", bigEnough) + "]");
+        LOGGER.i("Rejected preview sizes: [" + TextUtils.join(", ", tooSmall) + "]");
 
         if (exactSizeFound)
         {
-            Log.i(TAG, "Exact size match found.");
+            LOGGER.i("Exact size match found.");
             return desiredSize;
         }
 
@@ -393,12 +347,12 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
         if (bigEnough.size() > 0)
         {
             final Size chosenSize = Collections.min(bigEnough, new CompareSizesByArea());
-            Log.i(TAG, "Chosen size: " + chosenSize.getWidth() + "x" + chosenSize.getHeight());
+            LOGGER.i("Chosen size: " + chosenSize.getWidth() + "x" + chosenSize.getHeight());
             return chosenSize;
         }
         else
         {
-            Log.e(TAG, "Couldn't find any suitable preview size");
+            LOGGER.e("Couldn't find any suitable preview size");
             return choices[0];
         }
     }
