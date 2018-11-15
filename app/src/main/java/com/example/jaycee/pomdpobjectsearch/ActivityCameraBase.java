@@ -75,16 +75,22 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         frameHandler = (FrameHandler)this;
     }
 
-    protected int[] getRgbBytes() {
-        objImageConverter.run();
+    protected int[] getRgbBytes()
+    {
+        if(objImageConverter != null)
+        {
+            objImageConverter.run();
+        }
         return rgbBytes;
     }
 
-    protected int getLuminanceStride() {
+    protected int getLuminanceStride()
+    {
         return yRowStride;
     }
 
-    protected byte[] getLuminance() {
+    protected byte[] getLuminance()
+    {
         return yuvBytes[0];
     }
 

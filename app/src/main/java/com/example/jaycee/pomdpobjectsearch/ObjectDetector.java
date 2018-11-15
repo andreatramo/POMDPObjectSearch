@@ -161,7 +161,8 @@ public class ObjectDetector implements Classifier
     private ObjectDetector() {}
 
     @Override
-    public List<Recognition> recognizeImage(Bitmap bitmap) { //TODO: change bitmap with byteArray[] and change the code of tensorflow lite to take all the image size
+    public List<Recognition> recognizeImage(Bitmap bitmap)
+    {
         // Log this method so that it can be analyzed with systrace.
         Trace.beginSection("recognizeImage");
 

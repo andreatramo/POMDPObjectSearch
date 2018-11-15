@@ -22,11 +22,23 @@ import com.example.jaycee.pomdpobjectsearch.helpers.BorderedText;
 import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
 import com.example.jaycee.pomdpobjectsearch.tracking.MultiBoxTracker;
 import com.example.jaycee.pomdpobjectsearch.views.OverlayView;
+import com.google.ar.core.ArCoreApk;
+import com.google.ar.core.Config;
+import com.google.ar.core.Session;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
+import com.google.ar.core.exceptions.UnavailableApkTooOldException;
+import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
+import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
+import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
+import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 
 import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
+
+import static com.google.ar.core.ArCoreApk.InstallStatus.INSTALLED;
+import static com.google.ar.core.ArCoreApk.InstallStatus.INSTALL_REQUESTED;
 
 public class ActivityCamera extends ActivityCameraBase implements ImageReader.OnImageAvailableListener, FrameHandler
 {
@@ -59,6 +71,8 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
 
     private Classifier detector;
 
+    private Session session;
+
     private Bitmap rgbFrameBitmap;
     private Bitmap croppedBitmap = null;
     private Bitmap cropCopyBitmap = null;
@@ -72,6 +86,7 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
     private long timestamp = 0;
 
     private boolean computingDetection = false;
+    private boolean requestARCoreInstall = true;
 
     private byte[] luminanceCopy;
 
@@ -86,13 +101,74 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
     public void onResume()
     {
         super.onResume();
+
+        if(session == null)
+        {
+            try
+            {
+                switch(ArCoreApk.getInstance().requestInstall(this, requestARCoreInstall))
+                {
+                    case INSTALLED:
+                        break;
+                    case INSTALL_REQUESTED:
+                        requestARCoreInstall = false;
+                        return;
+                }
+
+                session = new Session(this);
+
+                // Set config settings
+                Config conf = new Config(session);
+                conf.setFocusMode(Config.FocusMode.AUTO);
+                session.configure(conf);
+            }
+            catch(UnavailableUserDeclinedInstallationException | UnavailableArcoreNotInstalledException e)
+            {
+                LOGGER.e("Please install ARCore.");
+                return;
+            }
+            catch(UnavailableDeviceNotCompatibleException e)
+            {
+                LOGGER.e("This device does not support ARCore.");
+                return;
+            }
+            catch(UnavailableApkTooOldException e)
+            {
+                LOGGER.e("Please update the app.");
+                return;
+            }
+            catch(UnavailableSdkTooOldException e)
+            {
+                LOGGER.e("Please update ARCore. ");
+                return;
+            }
+            catch(Exception e)
+            {
+                Log.e(TAG, "Failed to create AR session.");
+            }
+        }
+
+        try
+        {
+            session.resume();
+        }
+        catch (CameraNotAvailableException e)
+        {
+            session = null;
+            LOGGER.e("Camera not available", e);
+            return;
+        }
+
         surfaceView.onResume();
     }
 
     @Override
     public void onPause()
     {
-        LOGGER.i("Activity onPause");
+        if(session != null)
+        {
+            session.pause();
+        }
         surfaceView.onPause();
         super.onPause();
     }
@@ -126,7 +202,8 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
 
         int cropSize = TF_OD_API_INPUT_SIZE;
 
-        try {
+        try
+        {
             detector =
                     ObjectDetector.create(
                             getAssets(),
@@ -264,59 +341,60 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
             ImageUtils.saveBitmap(croppedBitmap);
         }
 
-        if(detector != null)
+        if(detector == null)
         {
             LOGGER.w("Detector not initialised. ");
-            runInBackground(
-                    new Runnable()
-                    {
-                        @Override
-                        public void run()
-                        {
-                            LOGGER.i("Running detection on image " + currTimestamp);
-                            final long startTime = SystemClock.uptimeMillis();
-                            final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
-                            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-
-                            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-                            final Canvas canvas = new Canvas(cropCopyBitmap);
-                            final Paint paint = new Paint();
-                            paint.setColor(Color.RED);
-                            paint.setStyle(Paint.Style.STROKE);
-                            paint.setStrokeWidth(2.0f);
-
-                            float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                            switch (MODE)
-                            {
-                                case TF_OD_API:
-                                    minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                                    break;
-                            }
-
-                            final List<Classifier.Recognition> mappedRecognitions =
-                                    new LinkedList<Classifier.Recognition>();
-
-                            for (final Classifier.Recognition result : results)
-                            {
-                                final RectF location = result.getLocation();
-                                if (location != null && result.getConfidence() >= minimumConfidence)
-                                {
-                                    canvas.drawRect(location, paint);
-
-                                    cropToFrameTransform.mapRect(location);
-                                    result.setLocation(location);
-                                    mappedRecognitions.add(result);
-                                }
-                            }
-
-                            tracker.trackResults(mappedRecognitions, luminanceCopy, currTimestamp);
-                            trackingOverlay.postInvalidate();
-
-                            requestRender();
-                            computingDetection = false;
-                        }
-                    });
+            return;
         }
+        runInBackground(
+                new Runnable()
+                {
+                    @Override
+                    public void run()
+                    {
+                        LOGGER.i("Running detection on image " + currTimestamp);
+                        final long startTime = SystemClock.uptimeMillis();
+                        final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);
+                        lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+
+                        cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                        final Canvas canvas = new Canvas(cropCopyBitmap);
+                        final Paint paint = new Paint();
+                        paint.setColor(Color.RED);
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setStrokeWidth(2.0f);
+
+                        float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                        switch (MODE)
+                        {
+                            case TF_OD_API:
+                                minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                                break;
+                        }
+
+                        final List<Classifier.Recognition> mappedRecognitions =
+                                new LinkedList<Classifier.Recognition>();
+
+                        for (final Classifier.Recognition result : results)
+                        {
+                            final RectF location = result.getLocation();
+                            if (location != null && result.getConfidence() >= minimumConfidence)
+                            {
+                                canvas.drawRect(location, paint);
+
+                                cropToFrameTransform.mapRect(location);
+                                result.setLocation(location);
+                                mappedRecognitions.add(result);
+                            }
+                        }
+
+                        tracker.trackResults(mappedRecognitions, luminanceCopy, currTimestamp);
+                        trackingOverlay.postInvalidate();
+
+                        requestRender();
+                        computingDetection = false;
+                    }
+                });
     }
 
     @Override
