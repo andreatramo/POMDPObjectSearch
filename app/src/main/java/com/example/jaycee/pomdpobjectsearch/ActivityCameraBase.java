@@ -38,12 +38,13 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
 
     private Handler handler;
     private HandlerThread handlerThread;
-    private boolean isProcessingFrame = false;
     private byte[][] yuvBytes = new byte[3][];
     private int[] rgbBytes = null;
     private int yRowStride;
 
     private boolean debug = false;
+    private boolean isProcessingFrame = false;
+    private boolean isGeneratingSound = false;
 
     protected int previewWidth = 0;
     protected int previewHeight = 0;
@@ -51,10 +52,11 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
     private byte[] previewBytes;
     private byte[] processingBytes;
 
-    private Runnable postInferenceCallback;
+    private Runnable postInferenceCallback, postSoundGenerationCallback;
     private Runnable previewImageConverter, objImageConverter;
 
     protected FrameHandler frameHandler;
+    protected SoundHandler soundHandler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -73,6 +75,7 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         actionBar.setHomeAsUpIndicator(R.drawable.ic_menu);
 
         frameHandler = (FrameHandler)this;
+        soundHandler = (SoundHandler)this;
     }
 
     protected int[] getRgbBytes()
@@ -239,6 +242,7 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
                 return;
             }
             isProcessingFrame = true;
+            isGeneratingSound = true;
 
             postInferenceCallback = new Runnable()
             {
@@ -247,6 +251,15 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
                 {
                     image.close();
                     isProcessingFrame = false;
+                }
+            };
+
+            postSoundGenerationCallback = new Runnable()
+            {
+                @Override
+                public void run()
+                {
+                    isGeneratingSound = false;
                 }
             };
 
@@ -280,6 +293,7 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
             };
 
             processImage();
+            generateSound();
         }
         catch(final Exception e)
         {
@@ -409,6 +423,8 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
 
     protected abstract void processImage();
     protected abstract void renderFrame(Image image);
+
+    protected abstract void generateSound();
 
     protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
     protected abstract Size getDesiredPreviewSize();

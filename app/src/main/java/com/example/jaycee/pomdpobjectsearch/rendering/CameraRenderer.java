@@ -45,12 +45,15 @@ public class CameraRenderer implements GLSurfaceView.Renderer
         nativeRenderFrame();
     }
 
+    public int getNativeARTextureId() { return nativeGetARTextureId(); }
+
     // GLRenderer
     private native void nativeCreateRenderer();
     private native void nativeDestroyRenderer();
     private native void nativeInitRenderer(int width, int height);
     private native void nativeRenderFrame();
     private native void nativeDrawFrame(byte[] data, int width, int height, int rotation);
+    private native int nativeGetARTextureId();
 
     static
     {

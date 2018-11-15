@@ -184,6 +184,18 @@ bool RendererYUV420::createTextures()
         return false;
     }
 
+    // Create AR Core texture and attach to external camera texture
+    glGenTextures(1, &textureIdAR);
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureIdAR);
+    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    if(!textureIdAR)
+    {
+        check_gl_error("Create AR texture");
+        return false;
+    }
+
     return true;
 }
 
@@ -311,4 +323,9 @@ GLuint RendererYUV420::useProgram()
     }
 
     return program;
+}
+
+GLuint RendererYUV420::getARTextureId()
+{
+    return textureIdAR;
 }

@@ -18,6 +18,7 @@ JULAYOM(void, nativeDestroyRenderer)(JNIEnv*, jobject);
 JULAYOM(void, nativeInitRenderer)(JNIEnv*, jobject, jint, jint);
 JULAYOM(void, nativeRenderFrame)(JNIEnv*, jobject);
 JULAYOM(void, nativeDrawFrame)(JNIEnv*, jobject, jbyteArray, jint, jint, jint);
+JULAYOM(int, nativeGetARTextureId)(JNIEnv*, jobject);
 
 #ifdef __cplusplus
 }

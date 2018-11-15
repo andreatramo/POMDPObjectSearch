@@ -24,6 +24,11 @@ void RendererContext::drawFrame(uint8_t* buffer, size_t length, size_t width, si
     pVideoRenderer->drawFrame(buffer, length, width, height, rotation);
 }
 
+int RendererContext::getARTextureId()
+{
+    return pVideoRenderer->getARTextureId();
+}
+
 void RendererContext::createContext(JNIEnv* env, jobject obj)
 {
     RendererContext* context = new RendererContext();

@@ -42,6 +42,13 @@ JULAYOM(void, nativeDrawFrame)(JNIEnv* env, jobject obj, jbyteArray frame, jint 
     env->ReleaseByteArrayElements(frame, framePtr, 0);
 }
 
+JULAYOM(int, nativeGetARTextureId)(JNIEnv* env, jobject obj)
+{
+    RendererContext* context = RendererContext::getContext(env, obj);
+
+    if(context) return context->getARTextureId();
+}
+
 #ifdef __cplusplus
 }
 #endif

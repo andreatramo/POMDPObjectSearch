@@ -24,6 +24,7 @@ import com.example.jaycee.pomdpobjectsearch.tracking.MultiBoxTracker;
 import com.example.jaycee.pomdpobjectsearch.views.OverlayView;
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Config;
+import com.google.ar.core.Frame;
 import com.google.ar.core.Session;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
@@ -37,7 +38,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
 
-public class ActivityCamera extends ActivityCameraBase implements ImageReader.OnImageAvailableListener, FrameHandler
+public class ActivityCamera extends ActivityCameraBase implements ImageReader.OnImageAvailableListener, FrameHandler, SoundHandler
 {
     private enum DetectorMode {
         TF_OD_API
@@ -181,6 +182,20 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
     {
         surfaceView.getRenderer().drawFrame(data, width, height, sensorOrientation);
         surfaceView.requestRender();
+    }
+
+    @Override
+    public void onSoundGenerated(Session session)
+    {
+        try
+        {
+            session.setCameraTextureName(surfaceView.getRenderer().getNativeARTextureId());
+            Frame frame = session.update();
+        }
+        catch(CameraNotAvailableException e)
+        {
+            LOGGER.e("Camera not available ", e);
+        }
     }
 
     @Override
@@ -398,5 +413,11 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
     protected void renderFrame(Image image)
     {
         frameHandler.onPreviewFrame(getPreviewBytes(), image.getWidth(), image.getHeight());
+    }
+
+    @Override
+    protected void generateSound()
+    {
+        soundHandler.onSoundGenerated(session);
     }
 }

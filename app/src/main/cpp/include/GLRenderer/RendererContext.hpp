@@ -22,6 +22,8 @@ public:
     void renderFrame();
     void drawFrame(uint8_t*, size_t, size_t, size_t, int);
 
+    int getARTextureId();
+
     static void createContext(JNIEnv*, jobject);
     static void storeContext(JNIEnv*, jobject, RendererContext*);
     static void deleteContext(JNIEnv*, jobject);

@@ -38,6 +38,8 @@ public:
     virtual GLuint createProgram(const char *pVertexSource, const char *pFragmentSource) = 0;
     virtual GLuint useProgram() = 0;
 
+    virtual GLuint getARTextureId() = 0;
+
 protected:
     GLuint program;
     GLuint vertexShader;

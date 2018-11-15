@@ -19,6 +19,8 @@ public:
     virtual GLuint createProgram(const char*, const char*) override;
     virtual GLuint useProgram() override;
 
+    virtual GLuint getARTextureId() override;
+
 private:
     std::unique_ptr<uint8_t[]> pDataY;
 
@@ -33,6 +35,7 @@ private:
     GLuint textureIdY;
     GLuint textureIdU;
     GLuint textureIdV;
+    GLuint textureIdAR;
 
     GLuint vertexPos;
     GLuint textureLoc;
