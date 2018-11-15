@@ -5,6 +5,7 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
+import android.util.Log;
 
 import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
 
@@ -22,6 +23,8 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -211,7 +214,13 @@ public class ObjectDetector implements Classifier
 
         // Run the inference call.
         Trace.beginSection("run");
+        long start = System.currentTimeMillis();
         tfLite.runForMultipleInputsOutputs(inputArray, outputMap);
+        long time = System.currentTimeMillis() - start;
+
+        String print = "Inference time: " + time + " ms";
+        Log.d("Inference_time", print);
+
         Trace.endSection();
 
         // Show the best detections.
