@@ -22,11 +22,20 @@ import android.widget.Toolbar;
 import com.example.jaycee.pomdpobjectsearch.helpers.ImageUtils;
 import com.example.jaycee.pomdpobjectsearch.views.OverlayView;
 import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
+import com.google.ar.core.ArCoreApk;
+import com.google.ar.core.Config;
+import com.google.ar.core.Session;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
+import com.google.ar.core.exceptions.UnavailableApkTooOldException;
+import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
+import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
+import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
+import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationException;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
-public abstract class ActivityCameraBase extends Activity implements ImageReader.OnImageAvailableListener
+public abstract class ActivityCameraBase extends Activity
 {
     private static final String TAG = ActivityCameraBase.class.getSimpleName();
     private static final Logger LOGGER = new Logger(TAG);
@@ -38,25 +47,23 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
 
     private Handler handler;
     private HandlerThread handlerThread;
-    private byte[][] yuvBytes = new byte[3][];
-    private int[] rgbBytes = null;
-    private int yRowStride;
+    private int[] imageBytes = null;
 
     private boolean debug = false;
     private boolean isProcessingFrame = false;
     private boolean isGeneratingSound = false;
+    private boolean requestARCoreInstall = true;
 
     protected int previewWidth = 0;
     protected int previewHeight = 0;
 
-    private byte[] previewBytes;
-    private byte[] processingBytes;
-
     private Runnable postInferenceCallback, postSoundGenerationCallback;
-    private Runnable previewImageConverter, objImageConverter;
+    private Runnable imageConverter;
 
     protected FrameHandler frameHandler;
     protected SoundHandler soundHandler;
+
+    private Session session;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -80,21 +87,11 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
 
     protected int[] getRgbBytes()
     {
-        if(objImageConverter != null)
+        if(imageConverter != null)
         {
-            objImageConverter.run();
+            imageConverter.run();
         }
-        return rgbBytes;
-    }
-
-    protected int getLuminanceStride()
-    {
-        return yRowStride;
-    }
-
-    protected byte[] getLuminance()
-    {
-        return yuvBytes[0];
+        return imageBytes;
     }
 
     @Override
@@ -102,6 +99,7 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
     {
         LOGGER.d("onStart " + this);
         super.onStart();
+        imageBytes = new int[previewWidth*previewHeight];
     }
 
     @Override
@@ -112,6 +110,63 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         if(!hasPermission())
         {
             requestPermission();
+        }
+
+        if(session == null)
+        {
+            try
+            {
+                switch(ArCoreApk.getInstance().requestInstall(this, requestARCoreInstall))
+                {
+                    case INSTALLED:
+                        break;
+                    case INSTALL_REQUESTED:
+                        requestARCoreInstall = false;
+                        return;
+                }
+
+                session = new Session(this);
+
+                // Set config settings
+                Config conf = new Config(session);
+                conf.setFocusMode(Config.FocusMode.AUTO);
+                session.configure(conf);
+            }
+            catch(UnavailableUserDeclinedInstallationException | UnavailableArcoreNotInstalledException e)
+            {
+                LOGGER.e("Please install ARCore.");
+                return;
+            }
+            catch(UnavailableDeviceNotCompatibleException e)
+            {
+                LOGGER.e("This device does not support ARCore.");
+                return;
+            }
+            catch(UnavailableApkTooOldException e)
+            {
+                LOGGER.e("Please update the app.");
+                return;
+            }
+            catch(UnavailableSdkTooOldException e)
+            {
+                LOGGER.e("Please update ARCore. ");
+                return;
+            }
+            catch(Exception e)
+            {
+                Log.e(TAG, "Failed to create AR session.");
+            }
+        }
+
+        try
+        {
+            session.resume();
+        }
+        catch (CameraNotAvailableException e)
+        {
+            session = null;
+            LOGGER.e("Camera not available", e);
+            return;
         }
 
         handlerThread = new HandlerThread("InferenceThread");
@@ -125,6 +180,11 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         if(!isFinishing())
         {
             finish();
+        }
+
+        if(session != null)
+        {
+            session.pause();
         }
 
         handlerThread.quitSafely();
@@ -191,144 +251,6 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         }
     }
 
-    /**
-     * Callback for Camera2 API
-     */
-    @Override
-    public void onImageAvailable(final ImageReader reader)
-    {
-
-       // Need to have preview sizes set
-       if(previewHeight == 0 || previewWidth == 0) return;
-
-       if(rgbBytes == null)
-        {
-            rgbBytes = new int[previewWidth*previewHeight];
-        }
-
-        if(previewBytes == null)
-        {
-            previewBytes = new byte[previewHeight*previewWidth*4];
-        }
-
-        if(processingBytes == null)
-        {
-            processingBytes = new byte[previewHeight*previewWidth*4];
-        }
-
-        try
-        {
-            final Image image = reader.acquireLatestImage();
-            if(image == null)
-                return;
-
-            final Image.Plane[] planes = image.getPlanes();
-
-            previewImageConverter = new Runnable() {
-                @Override
-                public void run()
-                {
-                    previewBytes = YUV_420_888_data(image);
-                    LOGGER.d("Converting image");
-
-                }
-            };
-
-            renderFrame(image);
-
-            if(isProcessingFrame)
-            {
-                image.close();
-                return;
-            }
-            isProcessingFrame = true;
-            isGeneratingSound = true;
-
-            postInferenceCallback = new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    image.close();
-                    isProcessingFrame = false;
-                }
-            };
-
-            postSoundGenerationCallback = new Runnable()
-            {
-                @Override
-                public void run()
-                {
-                    isGeneratingSound = false;
-                }
-            };
-
-            Trace.beginSection("ImageAvailable");
-
-            fillBytes(planes, yuvBytes);
-            yRowStride = planes[0].getRowStride();
-            final int uvRowStride = planes[1].getRowStride();
-            final int uvPixelStride = planes[1].getPixelStride();
-
-            //needed, because I need a int[] array (rgbBytes) for the bitmap
-            //TODO: merge with the other converter, to make all at one time
-            objImageConverter = new Runnable()
-            {
-                @Override
-                public void run()
-                {
-
-                    ImageUtils.convertYUV420ToARGB8888(
-                            yuvBytes[0],
-                            yuvBytes[1],
-                            yuvBytes[2],
-                            image.getWidth(), //the image size is 1600x1200
-                            image.getHeight(),
-                            yRowStride,
-                            uvRowStride,
-                            uvPixelStride,
-                            rgbBytes);
-
-                }
-            };
-
-            processImage();
-            generateSound();
-        }
-        catch(final Exception e)
-        {
-            LOGGER.e("Exception on ImageReader: " + e);
-            Trace.endSection();
-            postInferenceCallback.run();
-            return;
-        }
-        Trace.endSection();
-    }
-
-    protected void fillBytes(final Image.Plane[] planes, final byte[][] yuvBytes)
-    {
-        // Because of the variable row stride it's not possible to know in
-        // advance the actual necessary dimensions of the yuv planes.
-        for (int i = 0; i < planes.length; ++i) {
-            final ByteBuffer buffer = planes[i].getBuffer();
-            buffer.position(0);
-            if (yuvBytes[i] == null) {
-                LOGGER.d("Initializing buffer %d at size %d", i, buffer.capacity());
-                yuvBytes[i] = new byte[buffer.capacity()];
-            }
-            buffer.get(yuvBytes[i]);
-        }
-    }
-
-    protected byte[] getPreviewBytes()
-    {
-        if(previewImageConverter!= null)
-        {
-            previewImageConverter.run();
-        }
-        return previewBytes;
-    }
-
     protected void readyForNextImage()
     {
         if (postInferenceCallback != null)
@@ -352,62 +274,11 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         }
     }
 
-    private static byte[] YUV_420_888_data(Image image)
-    {
-        final int imageWidth = image.getWidth();
-        final int imageHeight = image.getHeight();
-        final Image.Plane[] planes = image.getPlanes();
-        byte[] data = new byte[imageWidth * imageHeight *
-                ImageFormat.getBitsPerPixel(ImageFormat.YUV_420_888) / 8];
-        int offset = 0;
-
-        for (int plane = 0; plane < planes.length; ++plane)
-        {
-            final ByteBuffer buffer = planes[plane].getBuffer();
-            final int rowStride = planes[plane].getRowStride();
-            // Experimentally, U and V planes have |pixelStride| = 2, which
-            // essentially means they are packed.
-            final int pixelStride = planes[plane].getPixelStride();
-            final int planeWidth = (plane == 0) ? imageWidth : imageWidth / 2;
-            final int planeHeight = (plane == 0) ? imageHeight : imageHeight / 2;
-            if (pixelStride == 1 && rowStride == planeWidth)
-            {
-                // Copy whole plane from buffer into |data| at once.
-//                while (buffer.remaining() >= 36)
-                buffer.get(data, offset, planeWidth * planeHeight);
-                offset += planeWidth * planeHeight;
-            }
-            else
-             {
-                // Copy pixels one by one respecting pixelStride and rowStride.
-                byte[] rowData = new byte[rowStride];
-                for (int row = 0; row < planeHeight - 1; ++row)
-                {
-                    buffer.get(rowData, 0, rowStride);
-                    for (int col = 0; col < planeWidth; ++col)
-                    {
-                        data[offset++] = rowData[col * pixelStride];
-                    }
-                }
-                // Last row is special in some devices and may not contain the full
-                // |rowStride| bytes of data.
-                // See http://developer.android.com/reference/android/media/Image.Plane.html#getBuffer()
-                buffer.get(rowData, 0, Math.min(rowStride, buffer.remaining()));
-                for (int col = 0; col < planeWidth; ++col)
-                {
-                    data[offset++] = rowData[col * pixelStride];
-                }
-            }
-        }
-
-        return data;
-    }
-
     public boolean isDebug() {
         return debug;
     }
 
-    public void requestRender() {
+/*    public void requestRender() {
         final OverlayView overlay = (OverlayView) findViewById(R.id.debug_overlay);
         if (overlay != null) {
             overlay.postInvalidate();
@@ -419,14 +290,8 @@ public abstract class ActivityCameraBase extends Activity implements ImageReader
         if (overlay != null) {
             overlay.addCallback(callback);
         }
-    }
+    }*/
 
     protected abstract void processImage();
-    protected abstract void renderFrame(Image image);
-
     protected abstract void generateSound();
-
-    protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
-    protected abstract Size getDesiredPreviewSize();
-    // protected abstract int getLayoutId();
 }
