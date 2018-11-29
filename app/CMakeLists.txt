@@ -25,28 +25,6 @@ target_link_libraries(SoundGenerator
                       log
                       )
 
-# GLRenderer linkin
-add_library(Renderer
-        src/main/cpp/src/GLRenderer/Renderer.cpp
-        src/main/cpp/src/GLRenderer/RendererYUV420.cpp
-        src/main/cpp/src/GLRenderer/RendererContext.cpp
-        src/main/cpp/src/GLRenderer/GLUtils.cpp
-        )
-
-target_link_libraries(Renderer
-        GLESv2
-        log
-        )
-
-add_library(render
-        SHARED
-        src/main/cpp/src/renderWrapper.cpp
-        )
-
-target_link_libraries(render
-        Renderer
-        )
-
 # Link OpenAL and OpenCV into single JNI lib
 
 add_library(JNI

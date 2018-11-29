@@ -47,13 +47,8 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
 
     private Context context;
 
-    private CameraRenderer renderer;
-
     private Handler backgroundHandler;
     private HandlerThread backgroundThread;
-
-    private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer(0, 0, 0, 0);
-    private final ObjectRenderer objectRenderer = new ObjectRenderer();
 
     public CameraSurface(Context context, AttributeSet attrs)
     {
@@ -61,14 +56,11 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
 
         this.context = context;
 
-        renderer = new CameraRenderer(this);
-
         getHolder().addCallback(this);
 
         setPreserveEGLContextOnPause(true);
         setEGLContextClientVersion(2);
         setEGLConfigChooser(8, 8, 8, 8, 16, 0);
-        setRenderer(renderer);
         setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
     }
 
@@ -76,7 +68,6 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     public void surfaceCreated(SurfaceHolder surfaceHolder)
     {
         super.surfaceCreated(surfaceHolder);
-
     }
 
     @Override
@@ -89,7 +80,6 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     public void surfaceDestroyed(SurfaceHolder surfaceHolder)
     {
         super.surfaceDestroyed(surfaceHolder);
-        renderer.destroyRenderer();
     }
 
     public void startBackgroundThread()
@@ -126,10 +116,5 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     {
         stopBackgroundThread();
         super.onPause();
-    }
-
-    public CameraRenderer getRenderer()
-    {
-        return renderer;
     }
 }

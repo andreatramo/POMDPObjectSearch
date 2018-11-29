@@ -35,7 +35,7 @@ import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationExceptio
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
-public abstract class ActivityCameraBase extends Activity
+public abstract class ActivityCameraBase extends Activity implements FrameHandler
 {
     private static final String TAG = ActivityCameraBase.class.getSimpleName();
     private static final Logger LOGGER = new Logger(TAG);
@@ -63,7 +63,7 @@ public abstract class ActivityCameraBase extends Activity
     protected FrameHandler frameHandler;
     protected SoundHandler soundHandler;
 
-    private Session session;
+    protected Session session;
 
     @Override
     protected void onCreate(Bundle savedInstanceState)
@@ -158,17 +158,6 @@ public abstract class ActivityCameraBase extends Activity
             }
         }
 
-        try
-        {
-            session.resume();
-        }
-        catch (CameraNotAvailableException e)
-        {
-            session = null;
-            LOGGER.e("Camera not available", e);
-            return;
-        }
-
         handlerThread = new HandlerThread("InferenceThread");
         handlerThread.start();
         handler = new Handler(handlerThread.getLooper());
@@ -180,11 +169,6 @@ public abstract class ActivityCameraBase extends Activity
         if(!isFinishing())
         {
             finish();
-        }
-
-        if(session != null)
-        {
-            session.pause();
         }
 
         handlerThread.quitSafely();
@@ -294,4 +278,5 @@ public abstract class ActivityCameraBase extends Activity
 
     protected abstract void processImage();
     protected abstract void generateSound();
+    protected abstract void renderFrame();
 }

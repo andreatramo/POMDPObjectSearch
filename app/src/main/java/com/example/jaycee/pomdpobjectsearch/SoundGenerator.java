@@ -1,7 +1,7 @@
 package com.example.jaycee.pomdpobjectsearch;
 
 import com.example.jaycee.pomdpobjectsearch.helpers.ClassHelpers;
-import com.example.jaycee.pomdpobjectsearch.rendering.SurfaceRenderer;
+import com.example.jaycee.pomdpobjectsearch.rendering.CameraRenderer;
 import com.google.ar.core.Anchor;
 import com.google.ar.core.Pose;
 import com.google.ar.core.Session;
@@ -33,7 +33,7 @@ public class SoundGenerator implements Runnable
     private static final int GRID_SIZE = 6;
 
     private Context context;
-    private SurfaceRenderer renderer;
+    private CameraRenderer renderer;
 
     private Pose phonePose;
     private Waypoint waypoint;
@@ -59,7 +59,7 @@ public class SoundGenerator implements Runnable
     private boolean targetFound = false;
 
 
-    SoundGenerator(Context context, SurfaceRenderer renderer)
+    SoundGenerator(Context context, CameraRenderer renderer)
     {
         this.context = context;
         this.renderer = renderer;
@@ -77,7 +77,7 @@ public class SoundGenerator implements Runnable
     @Override
     public void run()
     {
-        phonePose = renderer.getDevicePose();
+/*        phonePose = renderer.getDevicePose();
         this.session = renderer.getSession();
 
         if(!isTargetSet() || isTargetFound())
@@ -177,7 +177,7 @@ public class SoundGenerator implements Runnable
             metrics.updateTimestamp(renderer.getTimestamp());
             metrics.writeWifi();
         }
-        if(!stop) handler.postDelayed(this, 40);
+        if(!stop) handler.postDelayed(this, 40);*/
     }
 
     private ClassHelpers.mVector getCameraVector(Pose pose)
@@ -215,7 +215,7 @@ public class SoundGenerator implements Runnable
 
         metrics.updateTarget(target);
 
-        renderer.setDrawWaypoint(true);
+/*        renderer.setDrawWaypoint(true);*/
     }
 
     private float getPitch(double tilt)

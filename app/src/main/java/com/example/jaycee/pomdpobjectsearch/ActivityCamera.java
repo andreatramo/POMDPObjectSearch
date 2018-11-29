@@ -20,6 +20,7 @@ import android.widget.Toast;
 import com.example.jaycee.pomdpobjectsearch.helpers.ImageUtils;
 import com.example.jaycee.pomdpobjectsearch.helpers.BorderedText;
 import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
+import com.example.jaycee.pomdpobjectsearch.rendering.CameraRenderer;
 import com.example.jaycee.pomdpobjectsearch.tracking.MultiBoxTracker;
 import com.example.jaycee.pomdpobjectsearch.views.OverlayView;
 import com.google.ar.core.ArCoreApk;
@@ -63,6 +64,7 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     private Size DESIRED_PREVIEW_SIZE  = new Size(1600, 1200);
 
     private CameraSurface surfaceView;
+    private CameraRenderer renderer;
     private OverlayView trackingOverlay;
     private BorderedText borderedText;
     private MultiBoxTracker tracker;
@@ -92,6 +94,8 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     {
         super.onCreate(savedInstanceState);
         surfaceView = findViewById(R.id.surfaceview);
+        renderer = new CameraRenderer(this, session);
+        surfaceView.setRenderer(renderer);
     }
 
     @Override
@@ -99,6 +103,16 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     {
         super.onResume();
 
+        try
+        {
+            session.resume();
+        }
+        catch (CameraNotAvailableException e)
+        {
+            session = null;
+            LOGGER.e("Camera not available", e);
+            return;
+        }
 
         surfaceView.onResume();
     }
@@ -107,6 +121,11 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     public void onPause()
     {
         surfaceView.onPause();
+        if(session != null)
+        {
+            session.pause();
+        }
+
         super.onPause();
     }
 
@@ -117,16 +136,15 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     }
 
     @Override
-    public void onPreviewFrame(byte[] data, int width, int height)
+    public void onPreviewFrame()
     {
-        surfaceView.getRenderer().drawFrame(data, width, height, sensorOrientation);
         surfaceView.requestRender();
     }
 
     @Override
     public void onSoundGenerated(Session session)
     {
-        try
+/*        try
         {
             session.setCameraTextureName(surfaceView.getRenderer().getNativeARTextureId());
             Frame frame = session.update();
@@ -134,13 +152,13 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
         catch(CameraNotAvailableException e)
         {
             LOGGER.e("Camera not available ", e);
-        }
+        }*/
     }
 
     @Override
     protected void processImage()
     {
-        timestamp++;
+/*        timestamp++;
         final long currTimestamp = timestamp;
         byte[] originalLuminance = getLuminance();
         tracker.onFrame(
@@ -230,13 +248,13 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
                         requestRender();
                         computingDetection = false;
                     }
-                });
+                });*/
     }
 
     @Override
-    protected void renderFrame(Image image)
+    protected void renderFrame()
     {
-        frameHandler.onPreviewFrame(getPreviewBytes(), image.getWidth(), image.getHeight());
+        frameHandler.onPreviewFrame();
     }
 
     @Override

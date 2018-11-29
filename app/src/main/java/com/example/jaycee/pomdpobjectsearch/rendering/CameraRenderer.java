@@ -1,10 +1,18 @@
 package com.example.jaycee.pomdpobjectsearch.rendering;
 
+import android.content.Context;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
 
 import com.example.jaycee.pomdpobjectsearch.CameraSurface;
+import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
+import com.google.ar.core.Camera;
+import com.google.ar.core.Frame;
+import com.google.ar.core.Plane;
+import com.google.ar.core.PointCloud;
+import com.google.ar.core.Session;
+import com.google.ar.core.TrackingState;
 
 import java.io.IOException;
 
@@ -14,22 +22,21 @@ import javax.microedition.khronos.opengles.GL10;
 public class CameraRenderer implements GLSurfaceView.Renderer
 {
     private static final String TAG = CameraRenderer.class.getSimpleName();
+    private static final Logger LOGGER = new Logger(TAG);
 
-    private CameraSurface surfaceView;
+    private Context context;
 
-    public CameraRenderer(GLSurfaceView surfaceView)
+    private Session session;
+
+    private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer(0, 0, 0, 0);
+    private final ObjectRenderer objectRenderer = new ObjectRenderer();
+
+    public CameraRenderer(Context context, Session session)
     {
-        this.surfaceView = (CameraSurface)surfaceView;
+        this.context = context;
+        this.session = session;
 
-        Log.i(TAG, "Renderer init");
-        nativeCreateRenderer();
-    }
-
-    public void destroyRenderer() { }
-
-    public void drawFrame(byte[] frame, int width, int height, int rotation)
-    {
-        nativeDrawFrame(frame, width, height, rotation);
+        LOGGER.i("Renderer init");
     }
 
     @Override
@@ -65,11 +72,9 @@ public class CameraRenderer implements GLSurfaceView.Renderer
         {
             return;
         }
-        // Notify ARCore session that the view size changed so that the perspective matrix and
-        // the video background can be properly adjusted.
-        displayRotationHelper.updateSessionIfNeeded(session);
 
-        try {
+        try
+        {
             session.setCameraTextureName(backgroundRenderer.getTextureId());
 
             // Obtain the current frame from ARSession. When the configuration is set to
@@ -77,9 +82,6 @@ public class CameraRenderer implements GLSurfaceView.Renderer
             // camera framerate.
             Frame frame = session.update();
             Camera camera = frame.getCamera();
-
-            // Handle one tap per frame.
-            handleTap(frame, camera);
 
             // Draw background.
             backgroundRenderer.draw(frame);
@@ -103,32 +105,9 @@ public class CameraRenderer implements GLSurfaceView.Renderer
             final float[] colorCorrectionRgba = new float[4];
             frame.getLightEstimate().getColorCorrection(colorCorrectionRgba, 0);
 
-            // Visualize tracked points.
-            PointCloud pointCloud = frame.acquirePointCloud();
-            pointCloudRenderer.update(pointCloud);
-            pointCloudRenderer.draw(viewmtx, projmtx);
-
-            // Application is responsible for releasing the point cloud resources after
-            // using it.
-            pointCloud.release();
-
-            // Check if we detected at least one plane. If so, hide the loading message.
-            if (messageSnackbarHelper.isShowing()) {
-                for (Plane plane : session.getAllTrackables(Plane.class)) {
-                    if (plane.getTrackingState() == TrackingState.TRACKING) {
-                        messageSnackbarHelper.hide(this);
-                        break;
-                    }
-                }
-            }
-
-            // Visualize planes.
-            planeRenderer.drawPlanes(
-                    session.getAllTrackables(Plane.class), camera.getDisplayOrientedPose(), projmtx);
-
             // Visualize anchors created by touch.
             float scaleFactor = 1.0f;
-            for (ColoredAnchor coloredAnchor : anchors) {
+/*            for (ColoredAnchor coloredAnchor : anchors) {
                 if (coloredAnchor.anchor.getTrackingState() != TrackingState.TRACKING) {
                     continue;
                 }
@@ -141,11 +120,13 @@ public class CameraRenderer implements GLSurfaceView.Renderer
                 virtualObjectShadow.updateModelMatrix(anchorMatrix, scaleFactor);
                 virtualObject.draw(viewmtx, projmtx, colorCorrectionRgba, coloredAnchor.color);
                 virtualObjectShadow.draw(viewmtx, projmtx, colorCorrectionRgba, coloredAnchor.color);
-            }
+            }*/
 
-        } catch (Throwable t) {
+        }
+        catch (Throwable t)
+        {
             // Avoid crashing the application due to unhandled exceptions.
-            Log.e(TAG, "Exception on the OpenGL thread", t);
+            LOGGER.e("Exception on the OpenGL thread", t);
         }
     }
 }
