@@ -1,6 +1,8 @@
 package com.example.jaycee.pomdpobjectsearch.rendering;
 
 import android.content.Context;
+import android.graphics.PixelFormat;
+import android.opengl.EGL14;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.util.Log;
@@ -17,6 +19,7 @@ import com.google.ar.core.TrackingState;
 import java.io.IOException;
 
 import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.egl.EGLContext;
 import javax.microedition.khronos.opengles.GL10;
 
 public class CameraRenderer implements GLSurfaceView.Renderer
@@ -27,14 +30,16 @@ public class CameraRenderer implements GLSurfaceView.Renderer
     private Context context;
 
     private Session session;
+    private Frame frame;
+
+    private boolean rendererInitialised = false;
 
     private final BackgroundRenderer backgroundRenderer = new BackgroundRenderer(0, 0, 0, 0);
-    private final ObjectRenderer objectRenderer = new ObjectRenderer();
+    // private final ObjectRenderer objectRenderer = new ObjectRenderer();
 
-    public CameraRenderer(Context context, Session session)
+    public CameraRenderer(Context context)
     {
         this.context = context;
-        this.session = session;
 
         LOGGER.i("Renderer init");
     }
@@ -47,19 +52,21 @@ public class CameraRenderer implements GLSurfaceView.Renderer
         try
         {
             backgroundRenderer.createOnGlThread(context);
-            objectRenderer.createOnGlThread(context, "models/andy.obj", "models/andy.png");
+            // objectRenderer.createOnGlThread(context, "models/andy.obj", "models/andy.png");
         }
         catch(IOException e)
         {
             LOGGER.e("Failed to read asset file: " + e);
         }
 
+        LOGGER.i("Renderer created");
     }
 
     @Override
     public void onSurfaceChanged(GL10 gl10, int width, int height)
     {
         GLES20.glViewport(0, 0, width, height);
+        LOGGER.i("Screen set to %dx%d pixels", width, height);
     }
 
     @Override
@@ -67,27 +74,23 @@ public class CameraRenderer implements GLSurfaceView.Renderer
     {
         // Clear screen to notify driver it should not load any pixels from previous frame.
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
-
-        if (session == null)
-        {
-            return;
-        }
+        LOGGER.i("Drawing");
 
         try
         {
-            session.setCameraTextureName(backgroundRenderer.getTextureId());
-
             // Obtain the current frame from ARSession. When the configuration is set to
             // UpdateMode.BLOCKING (it is by default), this will throttle the rendering to the
             // camera framerate.
+            session.setCameraTextureName(backgroundRenderer.getTextureId());
             Frame frame = session.update();
             Camera camera = frame.getCamera();
 
             // Draw background.
             backgroundRenderer.draw(frame);
 
-            // If not tracking, don't draw 3d objects.
-            if (camera.getTrackingState() == TrackingState.PAUSED) {
+/*            // If not tracking, don't draw 3d objects.
+            if (camera.getTrackingState() == TrackingState.PAUSED)
+            {
                 return;
             }
 
@@ -106,7 +109,7 @@ public class CameraRenderer implements GLSurfaceView.Renderer
             frame.getLightEstimate().getColorCorrection(colorCorrectionRgba, 0);
 
             // Visualize anchors created by touch.
-            float scaleFactor = 1.0f;
+            float scaleFactor = 1.0f;*/
 /*            for (ColoredAnchor coloredAnchor : anchors) {
                 if (coloredAnchor.anchor.getTrackingState() != TrackingState.TRACKING) {
                     continue;
@@ -128,5 +131,25 @@ public class CameraRenderer implements GLSurfaceView.Renderer
             // Avoid crashing the application due to unhandled exceptions.
             LOGGER.e("Exception on the OpenGL thread", t);
         }
+    }
+
+    public void setFrame(Frame frame)
+    {
+        this.frame = frame;
+    }
+
+    public void setSession(Session session)
+    {
+        this.session = session;
+    }
+
+    public int getCameraTextureId()
+    {
+        return this.backgroundRenderer.getTextureId();
+    }
+
+    public boolean isRendererInitialised()
+    {
+        return rendererInitialised;
     }
 }

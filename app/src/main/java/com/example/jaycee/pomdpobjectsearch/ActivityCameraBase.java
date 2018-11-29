@@ -24,6 +24,7 @@ import com.example.jaycee.pomdpobjectsearch.views.OverlayView;
 import com.example.jaycee.pomdpobjectsearch.helpers.Logger;
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Config;
+import com.google.ar.core.Frame;
 import com.google.ar.core.Session;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
@@ -35,7 +36,7 @@ import com.google.ar.core.exceptions.UnavailableUserDeclinedInstallationExceptio
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
-public abstract class ActivityCameraBase extends Activity implements FrameHandler
+public abstract class ActivityCameraBase extends Activity implements FrameListener
 {
     private static final String TAG = ActivityCameraBase.class.getSimpleName();
     private static final Logger LOGGER = new Logger(TAG);
@@ -45,8 +46,9 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
 
     private static final int PERMISSIONS_REQUEST = 0;
 
-    private Handler handler;
-    private HandlerThread handlerThread;
+    private Handler frameHandler, inferenceHandler;
+    private HandlerThread frameThread, inferenceThread;
+
     private int[] imageBytes = null;
 
     private boolean debug = false;
@@ -60,7 +62,7 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
     private Runnable postInferenceCallback, postSoundGenerationCallback;
     private Runnable imageConverter;
 
-    protected FrameHandler frameHandler;
+    protected FrameListener frameListener;
     protected SoundHandler soundHandler;
 
     protected Session session;
@@ -81,7 +83,7 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
         actionBar.setDisplayHomeAsUpEnabled(true);
         actionBar.setHomeAsUpIndicator(R.drawable.ic_menu);
 
-        frameHandler = (FrameHandler)this;
+        frameListener = (FrameListener)this;
         soundHandler = (SoundHandler)this;
     }
 
@@ -154,13 +156,17 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
             }
             catch(Exception e)
             {
-                Log.e(TAG, "Failed to create AR session.");
+                LOGGER.e(TAG, "Failed to create AR session.");
             }
         }
 
-        handlerThread = new HandlerThread("InferenceThread");
-        handlerThread.start();
-        handler = new Handler(handlerThread.getLooper());
+        inferenceThread = new HandlerThread("InferenceThread");
+        inferenceThread.start();
+        inferenceHandler = new Handler(inferenceThread.getLooper());
+
+        frameThread = new HandlerThread("RenderThread");
+        frameThread.start();
+        frameHandler = new Handler(frameThread.getLooper());
     }
 
     @Override
@@ -171,16 +177,28 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
             finish();
         }
 
-        handlerThread.quitSafely();
+        inferenceThread.quitSafely();
         try
         {
-            handlerThread.join();
-            handlerThread = null;
-            handler = null;
+            inferenceThread.join();
+            inferenceThread = null;
+            inferenceHandler = null;
         }
         catch(final InterruptedException e)
         {
-            LOGGER.e("Exception onPause: " + e);
+            LOGGER.e("Exception pausing inference thread: " + e);
+        }
+
+        frameThread.quitSafely();
+        try
+        {
+            frameThread.join();
+            frameThread= null;
+            frameHandler = null;
+        }
+        catch(final InterruptedException e)
+        {
+            LOGGER.e("Exception pausing frame thread" + e);
         }
 
         super.onPause();
@@ -200,11 +218,19 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
         super.onDestroy();
     }
 
-    protected synchronized void runInBackground(final Runnable r)
+    protected synchronized void runInferenceInBackground(final Runnable r)
     {
-        if(handler != null)
+        if(inferenceHandler != null)
         {
-            handler.post(r);
+            inferenceHandler.post(r);
+        }
+    }
+
+    protected synchronized void runFrameRendererInBackground(final Runnable r)
+    {
+        if(frameHandler != null)
+        {
+            frameHandler.post(r);
         }
     }
 
@@ -278,5 +304,5 @@ public abstract class ActivityCameraBase extends Activity implements FrameHandle
 
     protected abstract void processImage();
     protected abstract void generateSound();
-    protected abstract void renderFrame();
+    protected abstract void renderFrame(Frame frame);
 }

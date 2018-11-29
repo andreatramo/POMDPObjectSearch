@@ -1,5 +1,4 @@
 #include <jniWrapper.hpp>
-#include <GLRenderer/GLUtils.hpp>
 
 #ifdef __cplusplus
 extern "C" {

@@ -12,6 +12,8 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.ImageReader;
+import android.opengl.EGL14;
+import android.opengl.EGLContext;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Handler;
@@ -38,6 +40,8 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+import javax.microedition.khronos.egl.EGL;
+
 public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callback
 {
     private static final String TAG = CameraSurface.class.getSimpleName();
@@ -46,9 +50,7 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     private static final int MINIMUM_PREVIEW_SIZE = 320;
 
     private Context context;
-
-    private Handler backgroundHandler;
-    private HandlerThread backgroundThread;
+    private CameraRenderer renderer;
 
     public CameraSurface(Context context, AttributeSet attrs)
     {
@@ -58,9 +60,13 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
 
         getHolder().addCallback(this);
 
+        renderer = new CameraRenderer(context);
+
         setPreserveEGLContextOnPause(true);
         setEGLContextClientVersion(2);
         setEGLConfigChooser(8, 8, 8, 8, 16, 0);
+
+        setRenderer(renderer);
         setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
     }
 
@@ -74,6 +80,7 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
     public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width, int height)
     {
         super.surfaceChanged(surfaceHolder, format, width, height);
+        LOGGER.i("Screen set to %dx%d pixels", width, height);
     }
 
     @Override
@@ -82,39 +89,8 @@ public class CameraSurface extends GLSurfaceView implements SurfaceHolder.Callba
         super.surfaceDestroyed(surfaceHolder);
     }
 
-    public void startBackgroundThread()
+    public CameraRenderer getRenderer()
     {
-        backgroundThread = new HandlerThread("CameraBackgroundThread");
-        backgroundThread.start();
-        backgroundHandler = new Handler(backgroundThread.getLooper());
-    }
-
-    public void stopBackgroundThread()
-    {
-        backgroundThread.quitSafely();
-        try
-        {
-            backgroundThread.join();
-            backgroundThread = null;
-            backgroundHandler = null;
-        }
-        catch (InterruptedException e)
-        {
-            e.printStackTrace();
-        }
-    }
-
-    @Override
-    public void onResume()
-    {
-        super.onResume();
-        startBackgroundThread();
-    }
-
-    @Override
-    public void onPause()
-    {
-        stopBackgroundThread();
-        super.onPause();
+        return this.renderer;
     }
 }

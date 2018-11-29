@@ -31,12 +31,12 @@
             android:layout_centerInParent="true"
             android:id="@+id/centre_view">
         </com.example.jaycee.pomdpobjectsearch.views.CentreView> -->
-        <com.example.jaycee.pomdpobjectsearch.views.OverlayView
+<!--        <com.example.jaycee.pomdpobjectsearch.views.OverlayView
             android:id="@+id/tracking_overlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_alignTop="@+id/surfaceview"/>
-        <com.example.jaycee.pomdpobjectsearch.views.OverlayView
+        <com.example.jaycee.pomdpobjectsearch.views.OverlayView-->
             android:id="@+id/debug_overlay"
             android:layout_width="match_parent"
             android:layout_height="match_parent"

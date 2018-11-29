@@ -28,6 +28,7 @@ import com.google.ar.core.Config;
 import com.google.ar.core.Frame;
 import com.google.ar.core.Session;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
+import com.google.ar.core.exceptions.MissingGlContextException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
 import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
 import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
@@ -39,7 +40,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Vector;
 
-public class ActivityCamera extends ActivityCameraBase implements FrameHandler, SoundHandler
+public class ActivityCamera extends ActivityCameraBase implements FrameListener, SoundHandler
 {
     private enum DetectorMode {
         TF_OD_API
@@ -71,8 +72,6 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
 
     private Classifier detector;
 
-    private Session session;
-
     private Bitmap rgbFrameBitmap;
     private Bitmap croppedBitmap = null;
     private Bitmap cropCopyBitmap = null;
@@ -94,8 +93,6 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     {
         super.onCreate(savedInstanceState);
         surfaceView = findViewById(R.id.surfaceview);
-        renderer = new CameraRenderer(this, session);
-        surfaceView.setRenderer(renderer);
     }
 
     @Override
@@ -113,7 +110,8 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
             LOGGER.e("Camera not available", e);
             return;
         }
-
+        surfaceView.getRenderer().setSession(session);
+        // runFrameRendererInBackground(new FrameRenderRunnable());
         surfaceView.onResume();
     }
 
@@ -136,8 +134,9 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     }
 
     @Override
-    public void onPreviewFrame()
+    public void onPreviewFrame(Frame frame)
     {
+        surfaceView.getRenderer().setFrame(frame);
         surfaceView.requestRender();
     }
 
@@ -252,14 +251,54 @@ public class ActivityCamera extends ActivityCameraBase implements FrameHandler, 
     }
 
     @Override
-    protected void renderFrame()
+    protected void renderFrame(Frame frame)
     {
-        frameHandler.onPreviewFrame();
+        frameListener.onPreviewFrame(frame);
     }
 
     @Override
     protected void generateSound()
     {
-        soundHandler.onSoundGenerated(session);
+        // soundHandler.onSoundGenerated(session);
+    }
+
+    class FrameRenderRunnable implements Runnable
+    {
+        @Override
+        public void run()
+        {
+            while(true)
+            {
+                LOGGER.i("HERE");
+                if(session == null)
+                {
+                    LOGGER.e("Session is null");
+                    SystemClock.sleep(2000);
+                    continue;
+                }
+                if(!surfaceView.getRenderer().isRendererInitialised())
+                {
+                    LOGGER.e("Renderer unavailable");
+                    SystemClock.sleep(2000);
+                    continue;
+                }
+                try
+                {
+                    session.setCameraTextureName(surfaceView.getRenderer().getCameraTextureId());
+                    Frame frame = session.update();
+                    renderFrame(frame);
+                    processImage();
+                    generateSound();
+                }
+                catch(CameraNotAvailableException e)
+                {
+                    LOGGER.e("Camera not available: ", e);
+                }
+/*                catch(MissingGlContextException e)
+                {
+                    LOGGER.e("Context unavailable: ", e);
+                }*/
+            }
+        }
     }
 }

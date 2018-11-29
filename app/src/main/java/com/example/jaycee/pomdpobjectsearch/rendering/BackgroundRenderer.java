@@ -35,15 +35,15 @@ public class BackgroundRenderer
     private int quadTexCoordParam;
     private int textureId = -1;
 
-    private int scannerWidth, scannerHeight;
-    private int scannerX, scannerY;
+/*    private int scannerWidth, scannerHeight;
+    private int scannerX, scannerY;*/
 
     public BackgroundRenderer(int scannerX, int scannerY, int scannerWidth, int scannerHeight)
     {
-        this.scannerWidth = scannerWidth;
+/*        this.scannerWidth = scannerWidth;
         this.scannerHeight = scannerHeight;
         this.scannerX = scannerX;
-        this.scannerY = scannerY;
+        this.scannerY = scannerY;*/
     }
 
     public int getTextureId() { return this.textureId; }
@@ -104,7 +104,7 @@ public class BackgroundRenderer
 
         /* TODO: Make size automatic */
         // currentFrameBuffer = IntBuffer.allocate(480*480);
-        currentFrameBuffer = IntBuffer.allocate(scannerWidth*scannerHeight);
+        // currentFrameBuffer = IntBuffer.allocate(scannerWidth*scannerHeight);
     }
 
     public void draw(Frame frame)
@@ -113,6 +113,10 @@ public class BackgroundRenderer
         if(frame.hasDisplayGeometryChanged())
         {
             frame.transformDisplayUvCoords(quadTexCoord, quadTexCoordTransformed);
+        }
+        if(frame.getTimestamp() == 0)
+        {
+            return;
         }
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST);
@@ -140,13 +144,13 @@ public class BackgroundRenderer
         ShaderUtils.checkGLError(TAG, "Draw");
 
         /* TODO: Make size automatic */
-        GLES20.glReadPixels(scannerX, scannerY, scannerWidth, scannerHeight, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, currentFrameBuffer);
+        // GLES20.glReadPixels(scannerX, scannerY, scannerWidth, scannerHeight, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, currentFrameBuffer);
     }
 
-    public IntBuffer getCurrentFrameBuffer()
-    {
-        return currentFrameBuffer;
-    }
+//    public IntBuffer getCurrentFrameBuffer()
+//    {
+//        return currentFrameBuffer;
+//    }
 
     private static final float[] QUAD_COORDS =
             new float[] {-1.f, -1.f, 0.f, -1.f, 1.f, 0.f, 1.f, -1.f, 0.f, 1.f, 1.f, 0.f};
