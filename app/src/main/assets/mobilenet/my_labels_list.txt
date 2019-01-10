@@ -1,0 +1,13 @@
+book
+bookcase
+chair
+desk
+door
+filing cabinet
+computer keyboard
+computer monitor
+computer mouse
+mug
+houseplant
+telephone
+window

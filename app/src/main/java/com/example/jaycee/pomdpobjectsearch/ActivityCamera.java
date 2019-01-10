@@ -36,22 +36,15 @@ public class ActivityCamera extends ActivityCameraBase implements ImageReader.On
     private static final String TAG = ActivityCamera.class.getSimpleName();
     private static final Logger LOGGER = new Logger(TAG);
     // Configuration values for the prepackaged SSD model.
-<<<<<<< Updated upstream
-=======
-    private static final int TF_OD_API_INPUT_SIZE = 300;
-    private static final boolean TF_OD_API_IS_QUANTIZED = true;
-    private static final String TF_OD_API_MODEL_FILE = "mobilenet/mobilenet_v1.tflite";
-    private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/mobilenet/coco_labels_list.txt";
-
->>>>>>> Stashed changes
     // Which detection model to use: by default uses Tensorflow Object Detection API frozen
     // checkpoints.
     private static final DetectorMode MODE = DetectorMode.TF_OD_API;
     private static final int TF_OD_API_INPUT_SIZE = 300;
     private static final boolean TF_OD_API_IS_QUANTIZED = true;
     private static final boolean MAINTAIN_ASPECT = false;
-    private static final boolean SAVE_PREVIEW_BITMAP = false;private static final String TF_OD_API_MODEL_FILE = "mobilenet/detect.tflite";
-    private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/mobilenet/coco_labels_list.txt";
+    private static final boolean SAVE_PREVIEW_BITMAP = false;
+    private static final String TF_OD_API_MODEL_FILE = "mobilenet/mobilenet_v2_office.tflite";
+    private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/mobilenet/my_labels_list.txt";
     // Minimum detection confidence to track a detection.
     private static final float MINIMUM_CONFIDENCE_TF_OD_API = 0.6f;
     private static final float TEXT_SIZE_DIP = 10;
