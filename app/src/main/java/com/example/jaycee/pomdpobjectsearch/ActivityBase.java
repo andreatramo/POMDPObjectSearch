@@ -1,16 +1,10 @@
 package com.example.jaycee.pomdpobjectsearch;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.media.Image;
 import android.os.Bundle;
-import android.os.DeadObjectException;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.support.annotation.NonNull;
 import android.support.design.widget.NavigationView;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBar;
@@ -36,9 +30,6 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
 {
     private static final String TAG = ActivityBase.class.getSimpleName();
 
-    private static final int CAMERA_PERMISSION_CODE = 0;
-    private static final String CAMERA_PERMISSION = Manifest.permission.CAMERA;
-
     protected enum Observation
     {
         O_NOTHING (0),
@@ -46,9 +37,17 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
         T_COMPUTER_KEYBOARD (2),
         T_COMPUTER_MOUSE (3),
         T_DESK (4),
+        T_LAPTOP (5),
         T_MUG (6),
-        T_OFFICE_SUPPLIES (7),
-        T_WINDOW (8);
+        T_WINDOW (7),
+        T_LAMP (8),
+        T_BACKPACK (9),
+        T_CHAIR (10),
+        T_COUCH (11),
+        T_PLANT (12),
+        T_TELEPHONE (13),
+        T_WHITEBOARD (14),
+        T_DOOR (15);
 
         private final int obsCode;
         Observation(int obsCode) { this.obsCode = obsCode; }
@@ -103,23 +102,47 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
             {
                 switch (item.getItemId())
                 {
-                    case R.id.item_object_mug:
-                        target = Observation.T_MUG;
+                    case R.id.item_object_backpack:
+                        target = Observation.T_BACKPACK;
+                        break;
+                    case R.id.item_object_chair:
+                        target = Observation.T_CHAIR;
+                        break;
+                    case R.id.item_object_couch:
+                        target = Observation.T_COUCH;
                         break;
                     case R.id.item_object_desk:
                         target = Observation.T_DESK;
                         break;
-                    case R.id.item_object_office_supplies:
-                        target = Observation.T_OFFICE_SUPPLIES;
+                    case R.id.item_object_door:
+                        target = Observation.T_DOOR;
                         break;
                     case R.id.item_object_keyboard:
                         target = Observation.T_COMPUTER_KEYBOARD;
+                        break;
+                    case R.id.item_object_lamp:
+                        target = Observation.T_LAMP;
+                        break;
+                    case R.id.item_object_laptop:
+                        target = Observation.T_LAPTOP;
                         break;
                     case R.id.item_object_monitor:
                         target = Observation.T_COMPUTER_MONITOR;
                         break;
                     case R.id.item_object_mouse:
                         target = Observation.T_COMPUTER_MOUSE;
+                        break;
+                    case R.id.item_object_mug:
+                        target = Observation.T_MUG;
+                        break;
+                    case R.id.item_object_plant:
+                        target = Observation.T_PLANT;
+                        break;
+                    case R.id.item_object_telephone:
+                        target = Observation.T_TELEPHONE;
+                        break;
+                    case R.id.item_object_whiteboard:
+                        target = Observation.T_WHITEBOARD;
                         break;
                     case R.id.item_object_window:
                         target = Observation.T_WINDOW;
@@ -166,11 +189,6 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
                         return;
                 }
 
-                if(!hasCameraPermission())
-                {
-                    requestCameraPermission();
-                    return;
-                }
                 session = new Session(this);
 
                 // Set config settings
@@ -238,17 +256,21 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
             finish();
         }
 
-        backgroundHandlerThread.quitSafely();
-        try
+        if(backgroundHandler != null)
         {
-            Log.i(TAG, "Closing detector thread");
-            backgroundHandlerThread.join();
-            backgroundHandlerThread = null;
-            backgroundHandler = null;
-        }
-        catch(InterruptedException e)
-        {
-            Log.e(TAG, "Exception onPause: " + e);
+            backgroundHandlerThread.quitSafely();
+            try
+            {
+                Log.i(TAG, "Closing detector thread");
+                backgroundHandlerThread.join();
+                backgroundHandlerThread = null;
+                backgroundHandler = null;
+            }
+            catch(InterruptedException e)
+            {
+                Log.e(TAG, "Exception onPause: " + e);
+            }
+
         }
 
         if(session != null)
@@ -333,16 +355,6 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
         {
             this.frame.getLock().unlock();
         }
-    }
-
-    public boolean hasCameraPermission()
-    {
-        return ContextCompat.checkSelfPermission(this, CAMERA_PERMISSION) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    public void requestCameraPermission()
-    {
-        ActivityCompat.requestPermissions(this, new String[] {CAMERA_PERMISSION}, CAMERA_PERMISSION_CODE);
     }
 
     protected synchronized void runInBackground(final Runnable r)

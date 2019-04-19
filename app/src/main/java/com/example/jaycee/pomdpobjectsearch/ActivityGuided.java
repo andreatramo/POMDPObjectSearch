@@ -132,9 +132,10 @@ public class ActivityGuided extends ActivityBase
     public void setTarget(Observation target)
     {
         super.setTarget(target);
+        Log.d(TAG, "Setting target");
         waypointProvider.setTarget(target, this);
         soundGenerator.setPhonePose(getFrame().getArFrame().getAndroidSensorPose());
-        soundGenerator.run();
+        soundGenerator.start();
     }
 
     @Override
