@@ -130,7 +130,7 @@ public class ActivityCamera extends AppCompatActivity implements NewFrameHandler
                 switch (item.getItemId())
                 {
                     case R.id.item_object_backpack:
-                        target = T_MUG;
+                        target = T_BACKPACK;
                         break;
                     case R.id.item_object_book:
                         target = T_BOOK;
@@ -157,7 +157,7 @@ public class ActivityCamera extends AppCompatActivity implements NewFrameHandler
                         target = T_LAPTOP;
                         break;
                     case R.id.item_object_lightswitch:
-                        target = T_MUG;
+                        target = T_LIGHT_SWITCH;
                         break;
                     case R.id.item_object_monitor:
                         target = T_COMPUTER_MONITOR;
@@ -166,7 +166,7 @@ public class ActivityCamera extends AppCompatActivity implements NewFrameHandler
                         target = T_COMPUTER_MOUSE;
                         break;
                     case R.id.item_object_mug:
-                        target = T_COMPUTER_KEYBOARD;
+                        target = T_MUG;
                         break;
                     case R.id.item_object_plant:
                         target = T_PLANT;
