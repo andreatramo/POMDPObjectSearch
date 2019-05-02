@@ -1,17 +1,13 @@
 package com.example.jaycee.pomdpobjectsearch;
 
 import android.Manifest;
-import android.app.Activity;
 import android.content.pm.PackageManager;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
-import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.provider.Settings;
 import android.support.annotation.NonNull;
 import android.support.design.widget.NavigationView;
 import android.support.v4.app.ActivityCompat;
@@ -25,6 +21,7 @@ import android.util.Log;
 import android.view.MenuItem;
 import android.widget.Toast;
 
+import com.example.jaycee.pomdpobjectsearch.helpers.CameraPermissionHelper;
 import com.example.jaycee.pomdpobjectsearch.helpers.ImageConverter;
 import com.example.jaycee.pomdpobjectsearch.helpers.ImageUtils;
 import com.google.ar.core.Anchor;
@@ -218,9 +215,9 @@ public class ActivityCamera extends AppCompatActivity implements NewFrameHandler
                         return;
                 }
 
-                if(!hasCameraPermission())
+                if(!CameraPermissionHelper.hasCameraPermission(this))
                 {
-                    requestCameraPermission();
+                    CameraPermissionHelper.requestCameraPermission(this);
                     return;
                 }
                 session = new Session(this);
@@ -303,23 +300,26 @@ public class ActivityCamera extends AppCompatActivity implements NewFrameHandler
     @Override
     protected void onPause()
     {
+        super.onPause();
         if(!isFinishing())
         {
             finish();
         }
 
-        backgroundHandlerThread.quitSafely();
-        try
+        if(backgroundHandler != null)
         {
-            backgroundHandlerThread.join();
-            backgroundHandlerThread = null;
-            backgroundHandler = null;
+            backgroundHandlerThread.quitSafely();
+            try
+            {
+                backgroundHandlerThread.join();
+                backgroundHandlerThread = null;
+                backgroundHandler = null;
+            }
+            catch(InterruptedException e)
+            {
+                Log.e(TAG, "Exception onPause: " + e);
+            }
         }
-        catch(InterruptedException e)
-        {
-            Log.e(TAG, "Exception onPause: " + e);
-        }
-
 
         if(soundGenerator != null)
         {
@@ -342,8 +342,6 @@ public class ActivityCamera extends AppCompatActivity implements NewFrameHandler
         {
             Log.e(TAG, "OpenAL kill error");
         }
-
-        super.onPause();
     }
 
     @Override
