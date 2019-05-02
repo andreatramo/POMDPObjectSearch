@@ -8,9 +8,7 @@ import android.view.WindowManager;
 
 import com.example.jaycee.pomdpobjectsearch.ActivityGuided;
 import com.example.jaycee.pomdpobjectsearch.CameraSurface;
-import com.example.jaycee.pomdpobjectsearch.FrameHandler;
-import com.example.jaycee.pomdpobjectsearch.SoundGenerator;
-import com.google.ar.core.Anchor;
+import com.example.jaycee.pomdpobjectsearch.imageprocessing.FrameHandler;
 import com.google.ar.core.Camera;
 import com.google.ar.core.Frame;
 import com.google.ar.core.Pose;
@@ -156,10 +154,10 @@ public class SurfaceRenderer implements GLSurfaceView.Renderer
                 waypointRenderer.updateModelMatrix(anchorMatrix, scaleFactor);
                 waypointRenderer.draw(viewMatrix, projectionMatrix, colourCorrectionRgba);
             }
-            else
+/*            else
             {
                 Log.d(TAG, "Camera not tracking or target not set. ");
-            }
+            }*/
         }
         catch(CameraNotAvailableException e)
         {

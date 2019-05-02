@@ -1,25 +1,32 @@
 package com.example.jaycee.pomdpobjectsearch;
 
+import android.content.Context;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Vibrator;
 import android.support.annotation.NonNull;
 import android.support.design.widget.NavigationView;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.ActionBar;
+import android.support.v7.app.ActionBarDrawerToggle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.MenuItem;
+import android.view.WindowManager;
+import android.widget.Toast;
 
-import com.example.jaycee.pomdpobjectsearch.helpers.ImageConverter;
+import com.example.jaycee.pomdpobjectsearch.imageprocessing.FrameHandler;
+import com.example.jaycee.pomdpobjectsearch.imageprocessing.FrameScanner;
+import com.example.jaycee.pomdpobjectsearch.imageprocessing.ImageConverter;
+import com.example.jaycee.pomdpobjectsearch.views.CentreView;
 import com.google.ar.core.ArCoreApk;
 import com.google.ar.core.Config;
 import com.google.ar.core.Session;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.core.exceptions.DeadlineExceededException;
-import com.google.ar.core.exceptions.NotYetAvailableException;
 import com.google.ar.core.exceptions.UnavailableApkTooOldException;
 import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
 import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
@@ -30,46 +37,26 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
 {
     private static final String TAG = ActivityBase.class.getSimpleName();
 
-    protected enum Observation
-    {
-        O_NOTHING (0),
-        T_COMPUTER_MONITOR (1),
-        T_COMPUTER_KEYBOARD (2),
-        T_COMPUTER_MOUSE (3),
-        T_DESK (4),
-        T_LAPTOP (5),
-        T_MUG (6),
-        T_WINDOW (7),
-        T_LAMP (8),
-        T_BACKPACK (9),
-        T_CHAIR (10),
-        T_COUCH (11),
-        T_PLANT (12),
-        T_TELEPHONE (13),
-        T_WHITEBOARD (14),
-        T_DOOR (15);
-
-        private final int obsCode;
-        Observation(int obsCode) { this.obsCode = obsCode; }
-
-        public int getCode() { return this.obsCode; }
-    }
-
-    private Observation target = Observation.O_NOTHING;
+    private Objects.Observation target = Objects.Observation.O_NOTHING;
 
     protected CameraSurface surfaceView;
+
     private DrawerLayout drawerLayout;
+    private ActionBarDrawerToggle actionBarDrawerToggle;
     private CentreView centreView;
+    private FrameScanner frameScanner;
+    private ImageConverter imageConverter;
+
+    private Frame frame;
+    private Metrics metrics;
 
     private Handler backgroundHandler;
     private HandlerThread backgroundHandlerThread;
 
+    private Vibrator vibrator;
+
     private Session session;
-    private Frame frame = Frame.getFrame();
-
-    private FrameScanner frameScanner;
-
-    private ImageConverter imageConverter;
+    private Toast toast;
 
     private boolean processingFrame = false;
     private boolean requestARCoreInstall = true;
@@ -83,74 +70,81 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        ActionBar actionBar = getSupportActionBar();
-        actionBar.setDisplayHomeAsUpEnabled(true);
-        actionBar.setHomeAsUpIndicator(R.drawable.ic_menu);
-
         surfaceView = findViewById(R.id.surfaceview);
 
         centreView = findViewById(R.id.centre_view);
 
         drawerLayout = findViewById(R.id.layout_drawer_objects);
-        NavigationView navigationView = findViewById(R.id.navigation_view_objects);
 
+        actionBarDrawerToggle = new ActionBarDrawerToggle(this, drawerLayout, toolbar, R.string.open, R.string.close);
+        drawerLayout.addDrawerListener(actionBarDrawerToggle);
+        actionBarDrawerToggle.syncState();
+//        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        // getSupportActionBar().setHomeButtonEnabled(true);
+
+        ActionBar actionBar = getSupportActionBar();
+        actionBar.setDisplayHomeAsUpEnabled(true);
+        actionBar.setHomeAsUpIndicator(R.drawable.ic_menu);
+
+        NavigationView navigationView = findViewById(R.id.navigation_view_objects);
         navigationView.setNavigationItemSelectedListener(new NavigationView.OnNavigationItemSelectedListener()
         {
-            Observation target;
+            Objects.Observation target;
             @Override
             public boolean onNavigationItemSelected(@NonNull MenuItem item)
             {
                 switch (item.getItemId())
                 {
                     case R.id.item_object_backpack:
-                        target = Observation.T_BACKPACK;
+                        target = Objects.Observation.T_BACKPACK;
                         break;
                     case R.id.item_object_chair:
-                        target = Observation.T_CHAIR;
+                        target = Objects.Observation.T_CHAIR;
                         break;
                     case R.id.item_object_couch:
-                        target = Observation.T_COUCH;
+                        target = Objects.Observation.T_COUCH;
                         break;
                     case R.id.item_object_desk:
-                        target = Observation.T_DESK;
+                        target = Objects.Observation.T_DESK;
                         break;
                     case R.id.item_object_door:
-                        target = Observation.T_DOOR;
+                        target = Objects.Observation.T_DOOR;
                         break;
                     case R.id.item_object_keyboard:
-                        target = Observation.T_COMPUTER_KEYBOARD;
+                        target = Objects.Observation.T_COMPUTER_KEYBOARD;
                         break;
                     case R.id.item_object_lamp:
-                        target = Observation.T_LAMP;
+                        target = Objects.Observation.T_LAMP;
                         break;
                     case R.id.item_object_laptop:
-                        target = Observation.T_LAPTOP;
+                        target = Objects.Observation.T_LAPTOP;
                         break;
                     case R.id.item_object_monitor:
-                        target = Observation.T_COMPUTER_MONITOR;
+                        target = Objects.Observation.T_COMPUTER_MONITOR;
                         break;
                     case R.id.item_object_mouse:
-                        target = Observation.T_COMPUTER_MOUSE;
+                        target = Objects.Observation.T_COMPUTER_MOUSE;
                         break;
                     case R.id.item_object_mug:
-                        target = Observation.T_MUG;
+                        target = Objects.Observation.T_MUG;
                         break;
                     case R.id.item_object_plant:
-                        target = Observation.T_PLANT;
+                        target = Objects.Observation.T_PLANT;
                         break;
                     case R.id.item_object_telephone:
-                        target = Observation.T_TELEPHONE;
+                        target = Objects.Observation.T_TELEPHONE;
                         break;
                     case R.id.item_object_whiteboard:
-                        target = Observation.T_WHITEBOARD;
+                        target = Objects.Observation.T_WHITEBOARD;
                         break;
                     case R.id.item_object_window:
-                        target = Observation.T_WINDOW;
+                        target = Objects.Observation.T_WINDOW;
                         break;
+                    default: target = null;
                 }
 
                 item.setCheckable(true);
-                setTarget(target);
+                if(target != null) setTarget(target);
 
                 drawerLayout.closeDrawers();
 
@@ -162,12 +156,10 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
     @Override
     public boolean onOptionsItemSelected(MenuItem item)
     {
-        switch (item.getItemId())
-        {
-            case android.R.id.home:
-                drawerLayout.openDrawer(GravityCompat.START);
-                return true;
-        }
+//            case android.R.id.home:
+//                drawerLayout.openDrawer(GravityCompat.START);
+//                return true;
+        if(actionBarDrawerToggle.onOptionsItemSelected(item)) return true;
         return super.onOptionsItemSelected(item);
     }
 
@@ -175,6 +167,23 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
     protected void onResume()
     {
         super.onResume();
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        if(vibrator == null)
+        {
+            this.vibrator = (Vibrator)this.getSystemService(Context.VIBRATOR_SERVICE);
+        }
+
+        try
+        {
+            frame = Frame.create();
+        }
+        catch(AssertionError e)
+        {
+            frame = Frame.getInstance();
+        }
+
+        metrics = new Metrics();
 
         if(session == null)
         {
@@ -273,6 +282,12 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
 
         }
 
+        if(vibrator != null)
+        {
+            vibrator.cancel();
+            vibrator = null;
+        }
+
         if(session != null)
         {
             surfaceView.onPause();
@@ -311,32 +326,32 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
 
         Log.d(TAG, "Processing new frame");
 
-        // PERFORM DETECTION + INFERENCE
-        try
-        {
-            this.frame.getLock().lock();
-            com.google.ar.core.Frame arFrame = frame.getArFrame();
-            int[] imageBytes = imageConverter.getRgbBytes(arFrame.acquireCameraImage());
-            frameScanner.updateBitmap(imageBytes);
-        }
-        catch(DeadlineExceededException e)
-        {
-            Log.e(TAG, "Deadline exceeded for image");
-        }
-        catch(NotYetAvailableException e)
-        {
-            Log.e(TAG, "Camera not yet ready: " + e);
-        }
-        finally
-        {
-            this.frame.getLock().unlock();
-        }
-
         runInBackground(new Runnable()
         {
             @Override
             public void run()
             {
+                // PERFORM DETECTION + INFERENCE
+                try
+                {
+                    frame.getLock().lock();
+                    if(frame.isImageClosed())
+                    {
+                        Log.w(TAG, "Image is closed");
+                        return;
+                    }
+                    int[] imageBytes = imageConverter.getRgbBytes(frame.getImage());
+                    frameScanner.updateBitmap(imageBytes);
+                }
+                catch(DeadlineExceededException e)
+                {
+                    Log.e(TAG, String.format("Deadline exceeded for image"));
+                }
+                finally
+                {
+                    frame.getLock().unlock();
+                }
+
                 frameScanner.scanFrame();
                 processingFrame = false;
             }
@@ -349,7 +364,7 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
         try
         {
             this.frame.getLock().lock();
-            this.frame.setFrame(frame);
+            this.frame.updateFrame(frame);
         }
         finally
         {
@@ -371,10 +386,29 @@ public abstract class ActivityBase extends AppCompatActivity implements FrameHan
     }
     public Session getSession() { return this.session; }
     public Frame getFrame() { return this.frame; }
+    public Vibrator getVibrator() { return this.vibrator; }
+    public Metrics getMetrics() { return this.metrics; }
 
-    public void setTarget(Observation target) { this.target = target; }
-    public Observation getTarget() { return this.target; }
+    public void setTarget(Objects.Observation target) { this.target = target; }
+    public Objects.Observation getTarget() { return this.target; }
 
     @Override
     public void onNewTimestamp(long timestamp) { }
+
+    public void displayToast(final String msg)
+    {
+        this.runInBackground(new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                if(toast != null)
+                {
+                    toast.cancel();
+                }
+                toast = Toast.makeText(ActivityBase.this, msg, Toast.LENGTH_SHORT);
+                toast.show();
+            }
+        });
+    }
 }

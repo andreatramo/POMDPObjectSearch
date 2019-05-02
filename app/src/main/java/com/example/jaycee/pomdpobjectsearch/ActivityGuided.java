@@ -1,70 +1,79 @@
 package com.example.jaycee.pomdpobjectsearch;
 
-import android.content.Context;
 import android.graphics.RectF;
-import android.os.Vibrator;
 import android.util.Log;
-import android.widget.Toast;
 
-import com.google.ar.core.Anchor;
-import com.google.ar.core.Config;
+import com.example.jaycee.pomdpobjectsearch.helpers.VectorTools;
+import com.example.jaycee.pomdpobjectsearch.imageprocessing.ObjectClassifier;
+import com.example.jaycee.pomdpobjectsearch.policy.Model;
+import com.example.jaycee.pomdpobjectsearch.views.Arrow;
 import com.google.ar.core.Frame;
 import com.google.ar.core.Pose;
-import com.google.ar.core.exceptions.NotTrackingException;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import static com.example.jaycee.pomdpobjectsearch.ActivityBase.Observation.O_NOTHING;
+import static com.example.jaycee.pomdpobjectsearch.Objects.Observation.O_NOTHING;
+import static com.example.jaycee.pomdpobjectsearch.helpers.VectorTools.CameraVector.getCameraVectorPanAndTilt;
 
 public class ActivityGuided extends ActivityBase
 {
     private static final String TAG = ActivityGuided.class.getSimpleName();
 
-    private static final float MIN_CONF = 0.2f;
+    private static final float MIN_CONF = 0.4f;
 
-    private SoundGenerator2 soundGenerator;
-
-    private Vibrator vibrator;
+    private SoundGenerator soundGenerator;
 
     private WaypointProvider waypointProvider;
+    private ActionGenerator actionGenerator;
+    private Model model;
 
-    private Observation observation;
+    private Objects.Observation observation;
+
+    private boolean targetSet = false;
 
     @Override
     protected void onResume()
     {
         super.onResume();
 
-        this.vibrator = (Vibrator)this.getSystemService(Context.VIBRATOR_SERVICE);
-
         if(!JNIBridge.initSound())
         {
             Log.e(TAG, "OpenAL init error");
         }
 
-        soundGenerator = new SoundGenerator2(this);
-        waypointProvider = new WaypointProvider();//(getFrame().getArFrame().getAndroidSensorPose());
+        if(soundGenerator == null)
+        {
+            soundGenerator = SoundGenerator.create(this);
+        }
+        else
+        {
+            soundGenerator = SoundGenerator.getInstance();
+        }
+        waypointProvider = new WaypointProvider();
+        if(actionGenerator == null)
+        {
+            actionGenerator = ActionGenerator.create(this);
+        }
+        else
+        {
+            actionGenerator = ActionGenerator.getInstance();
+        }
+        if(model == null)
+        {
+            model = Model.create(this);
+        }
+        else
+        {
+            model = Model.getInstance();
+        }
     }
 
     @Override
     protected void onPause()
     {
-        if(vibrator != null)
-        {
-            vibrator.cancel();
-        }
-
         if(soundGenerator != null)
         {
             soundGenerator.stop();
@@ -88,35 +97,45 @@ public class ActivityGuided extends ActivityBase
     @Override
     public void onNewFrame(final Frame frame)
     {
+        super.onNewFrame(frame);
+
+        getMetrics().updateTimestamp(frame.getTimestamp());
+        getMetrics().updatePhonePose(frame.getAndroidSensorPose());
+
+        getMetrics().writeWifi();
+
         if(soundGenerator == null)
         {
             Log.w(TAG, "Sound Generator is dead. Likely that the thread has been killed");
             return;
         }
 
-        super.onNewFrame(frame);
-
-        if(getTarget() == O_NOTHING)
+        if(!targetSet)
         {
             Log.d(TAG, "Target not set");
             return;
         }
 
         scanFrameForObjects();
-        Pose phonePose = frame.getAndroidSensorPose();
         if(observation != null)
         {
             try
             {
                 soundGenerator.getLock().lock();
 
+                Pose phonePose = frame.getAndroidSensorPose();
                 soundGenerator.setPhonePose(phonePose);
-                if(waypointProvider.waypointReached(phonePose) ||
+                VectorTools.PanAndTilt panAndTilt = getCameraVectorPanAndTilt(phonePose);
+                float cameraPan = (float)panAndTilt.pan;
+                float cameraTilt = (float)panAndTilt.tilt;
+
+                if(waypointProvider.waypointReached(cameraPan, cameraTilt) ||
                         (waypointProvider.observation != observation && waypointProvider.observation != O_NOTHING) ||
                         waypointProvider.getWaypointPose() == null)
                 {
                     Log.d(TAG, "setting new waypoint");
-                    waypointProvider.updateWaypoint(phonePose, observation);
+                    VectorTools.PanAndTilt newWaypointAngles = actionGenerator.getAngleAdjustment(observation, cameraPan, cameraTilt);
+                    waypointProvider.updateWaypoint(newWaypointAngles, phonePose.getTranslation()[2]);
                     soundGenerator.setWaypointPose(waypointProvider.getWaypointPose());
                     surfaceView.getRenderer().setDrawWaypoint(true);
                 }
@@ -129,19 +148,41 @@ public class ActivityGuided extends ActivityBase
     }
 
     @Override
-    public void setTarget(Observation target)
+    public void setTarget(Objects.Observation target)
     {
         super.setTarget(target);
+        getMetrics().updateTarget(target);
         Log.d(TAG, "Setting target");
-        waypointProvider.setTarget(target, this);
-        soundGenerator.setPhonePose(getFrame().getArFrame().getAndroidSensorPose());
-        soundGenerator.start();
+        try
+        {
+            soundGenerator.getLock().lock();
+
+            if(target != O_NOTHING)
+            {
+                model.setTarget(target);
+                if(actionGenerator.setTarget(target, model))
+                {
+                    targetSet = true;
+                    soundGenerator.setPhonePose(getFrame().getArFrame().getAndroidSensorPose());
+                    soundGenerator.start();
+                }
+                else
+                {
+                    targetSet = false;
+                    displayToast("Invalid target");
+                }
+            }
+        }
+        finally
+        {
+            soundGenerator.getLock().unlock();
+        }
     }
 
     @Override
     public void onScanComplete(List<ObjectClassifier.Recognition> results)
     {
-        RectF centreOfScreen = new RectF(100, 100, 200, 200);
+        RectF centreOfScreen = new RectF(0, 0, 300, 300);
         List<ObjectClassifier.Recognition> validObservations = new ArrayList<>();
         for(ObjectClassifier.Recognition result : results)
         {
@@ -163,19 +204,23 @@ public class ActivityGuided extends ActivityBase
                 }
             });
             observation = validObservations.get(0).getObservation();
+            Log.d(TAG, observation.getFileName());
         }
         else
         {
             observation = O_NOTHING;
         }
+        getMetrics().updateObservation(observation);
+        displayToast(observation.getFriendlyName());
 
         if(observation == getTarget())
         {
             Log.i(TAG, "Target found");
 
-            setTarget(O_NOTHING);
+            targetSet = false;
+//            setTarget(O_NOTHING);
             soundGenerator.stop();
-            vibrator.vibrate(350);
+            getVibrator().vibrate(350);
             surfaceView.getRenderer().setDrawWaypoint(false);
             updateArrows(null);
         }
